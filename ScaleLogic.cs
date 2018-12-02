@@ -13,7 +13,7 @@ namespace CosmosScale
         private static DateTimeOffset latestScaleUp = DateTime.MinValue;
         private static int currentRu = -1;
 
-        public static async Task<ScaleOperation> ScaleUpCollection(DocumentClient _client, string _databaseName, string _collectionName, int minRu)
+        public static async Task<ScaleOperation> ScaleUpCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu)
         {
             try
             {

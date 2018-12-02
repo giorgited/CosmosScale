@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Azure.CosmosDB.BulkExecutor;
 using Microsoft.Azure.Documents;
 using Microsoft.Azure.Documents.Client;
 
@@ -41,12 +42,12 @@ namespace CosmosScale
         }
 
         #region INSERT
-        public async Task<CosmosOperationResponse> InsertDocument(object document)
+        public async Task<CosmosOperationResponse> InsertDocumentAsync(object document)
         {
             CosmosOperationResponse result = new CosmosOperationResponse();
-            return await InsertDocument(document, 0, result);
+            return await InsertDocumentAsync(document, 0, result);
         }
-        private async Task<CosmosOperationResponse> InsertDocument(object document, int retryCount, CosmosOperationResponse result)
+        private async Task<CosmosOperationResponse> InsertDocumentAsync(object document, int retryCount, CosmosOperationResponse result)
         {
             try
             {
@@ -67,9 +68,9 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = await ScaleLogic.ScaleUpCollection(_client, _databaseName, _collectionName, _minRu);
+                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu);
                         result.ScaleOperations.Add(op);
-                        return await InsertDocument(document, retryCount++, result);
+                        return await InsertDocumentAsync(document, retryCount++, result);
                     }
                 }
                 else
@@ -82,18 +83,58 @@ namespace CosmosScale
         #endregion
 
         #region DELETE
-        public void DeleteDocument()
+        public async Task<CosmosOperationResponse> DeleteDocumentAsync(string id, object partitionKey = null)
         {
-
+            CosmosOperationResponse result = new CosmosOperationResponse();
+            return await DeleteDocumentAsync(id, 0, result, partitionKey);
         }
+
+        private async Task<CosmosOperationResponse> DeleteDocumentAsync(string id, int retryCount, CosmosOperationResponse result, object partitionKey = null)
+        {
+            try
+            {
+                var docUri = UriFactory.CreateDocumentUri(_databaseName, _collectionName, id);
+                if (partitionKey == null)
+                {
+                    await _client.DeleteDocumentAsync(docUri, new RequestOptions() { PartitionKey = new PartitionKey(id) });
+                }
+                else
+                {
+                    await _client.DeleteDocumentAsync(docUri, new RequestOptions() { PartitionKey = new PartitionKey(partitionKey) });
+                }
+                result.Success = true;
+                result.TotalRetries = retryCount;
+                return result;
+            }
+            catch (Exception e)
+            {
+                if (e.Message.Contains("Request rate is large"))
+                {
+                    if (retryCount > _maximumRetryCount)
+                    {
+                        result.Success = false;
+                        result.TotalRetries = retryCount;
+                        return result;
+                    }
+                    else
+                    {
+                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu);
+                        result.ScaleOperations.Add(op);
+                        return await DeleteDocumentAsync(id, retryCount++, result, partitionKey);
+                    }
+                }
+                else
+                {
+                    throw;
+                }
+            }
+        }
+        #endregion
 
         public void UpdateDocument()
         {
 
         }
-        #endregion
-       
-
     }
 
     public class CosmosOperationResponse
