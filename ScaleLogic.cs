@@ -10,14 +10,18 @@ namespace CosmosScale
 {
     public static class ScaleLogic
     {
-        private static DateTimeOffset latestScaleUp = DateTime.MinValue;
-        private static int currentRu = -1;
+        private static Dictionary<Tuple<string, string>, DateTime> latestScaleUp = new Dictionary<Tuple<string, string>, DateTime>(); 
 
         public static async Task<ScaleOperation> ScaleUpCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu)
         {
             try
             {
-                if (DateTime.Now.AddSeconds(-5) < latestScaleUp)
+                var latestActivty = DateTime.MinValue;
+                if (latestScaleUp.TryGetValue(new Tuple<string, string>(_databaseName, _collectionName), out var res))
+                {
+                    latestActivty = DateTime.Now;
+                }
+                if (DateTime.Now.AddSeconds(-5) < latestActivty)
                 {
                     return new ScaleOperation()
                     {
@@ -34,21 +38,18 @@ namespace CosmosScale
                 {
                     if (collection.Id == _collectionName)
                     {
-                        Offer offer = _client.CreateOfferQuery()
+                        var offer = (OfferV2)_client.CreateOfferQuery()
                             .Where(r => r.ResourceLink == collection.SelfLink)
                             .AsEnumerable()
                             .SingleOrDefault();
 
-                        if (currentRu == -1)
-                        {
-                            currentRu = minRu;
-                        }
+                        var currentRu = offer.Content.OfferThroughput;
 
                         offer = new OfferV2(offer, (int)currentRu + 500);
 
                         await _client.ReplaceOfferAsync(offer);
 
-                        latestScaleUp = DateTime.Now;
+                        latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
                         currentRu = currentRu + 500;
 
                         ScaleOperation op = new ScaleOperation();
@@ -74,7 +75,27 @@ namespace CosmosScale
             }
            
         }
+
+        public static async Task ScaleDownCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu)
+        {
+            Database database = _client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{_databaseName}\"").AsEnumerable().First();
+
+            List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
+
+            foreach (var collection in collections)
+            {
+                if (collection.Id == _collectionName)
+                {
+                    Offer offer = _client.CreateOfferQuery()
+                        .Where(r => r.ResourceLink == collection.SelfLink)
+                        .AsEnumerable()
+                        .SingleOrDefault();                       
+
+                    offer = new OfferV2(offer, minRu);
+
+                    await _client.ReplaceOfferAsync(offer);
+                }
+            }
+        }
     }
-
-
 }
