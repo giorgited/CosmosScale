@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2048
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosScale", "CosmosScale.csproj", "{E7308618-CEDD-4600-A2D7-A89805D3B517}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosScale.Tests", "..\CosmosScale.Tests\CosmosScale.Tests.csproj", "{48664D8C-E800-4014-B7D6-3912345A0ABC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E7308618-CEDD-4600-A2D7-A89805D3B517}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E7308618-CEDD-4600-A2D7-A89805D3B517}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E7308618-CEDD-4600-A2D7-A89805D3B517}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E7308618-CEDD-4600-A2D7-A89805D3B517}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48664D8C-E800-4014-B7D6-3912345A0ABC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48664D8C-E800-4014-B7D6-3912345A0ABC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48664D8C-E800-4014-B7D6-3912345A0ABC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48664D8C-E800-4014-B7D6-3912345A0ABC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3E454DA0-BA43-4AAA-BD88-CD14298F0D60}
+	EndGlobalSection
+EndGlobal
