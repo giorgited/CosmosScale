@@ -3,9 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28010.2048
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosScale", "CosmosScale\CosmosScale.csproj", "{D600EA58-09D6-40C6-8115-2F8E82E16286}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosScale", "CosmosScale\CosmosScale.csproj", "{D600EA58-09D6-40C6-8115-2F8E82E16286}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosScale.Tests", "CosmosScale.Tests\CosmosScale.Tests.csproj", "{742A8CD3-BE3D-4BE3-8F71-AC3F9D1B0283}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosScale.WebTest", "CosmosScale.WebTest\CosmosScale.WebTest.csproj", "{6CBDF23E-97BA-4D2F-98FA-244EBCD9D900}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{742A8CD3-BE3D-4BE3-8F71-AC3F9D1B0283}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{742A8CD3-BE3D-4BE3-8F71-AC3F9D1B0283}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{742A8CD3-BE3D-4BE3-8F71-AC3F9D1B0283}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6CBDF23E-97BA-4D2F-98FA-244EBCD9D900}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6CBDF23E-97BA-4D2F-98FA-244EBCD9D900}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6CBDF23E-97BA-4D2F-98FA-244EBCD9D900}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6CBDF23E-97BA-4D2F-98FA-244EBCD9D900}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

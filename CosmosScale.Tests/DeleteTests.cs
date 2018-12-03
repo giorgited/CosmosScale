@@ -70,6 +70,19 @@ namespace CosmosScale.Tests
 
             CheckAsertResult(results);
         }
+        [TestMethod]
+        public async Task DeleteAllNoResult()
+        {
+            var items = _cosmosOperator.QueryCosmos<CosmosTestRetrieveOperationObject>("SELECT * FROM c");
+
+            List<Task> tasks = new List<Task>();
+            foreach (var item in items)
+            {
+                tasks.Add(_cosmosOperator.DeleteDocumentAsync(item.id));
+            }
+
+            await Task.WhenAll(tasks);
+        }
 
         private void CheckAsertResult(List<CosmosOperationResponse> results)
         {

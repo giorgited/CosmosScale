@@ -6,6 +6,8 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading;
+using System.Diagnostics;
 
 namespace CosmosScale.Tests
 {
@@ -38,8 +40,53 @@ namespace CosmosScale.Tests
         [TestMethod]
         public void Insert10K()
         {
+            Stopwatch st = new Stopwatch();
+            st.Start();
+
             var results = InsertDocuments(10000);
             CheckAsertResult(results);
+
+            st.Stop();
+            return;
+        }
+        [TestMethod]
+        public async Task Insert10KBenchmark()
+        {
+            ConcurrentBag<CosmosTestOperationObject> list = new ConcurrentBag<CosmosTestOperationObject>();
+            Random rd = new Random();
+            Parallel.For(0, 10000, (i) =>
+            {
+                list.Add(new CosmosTestOperationObject
+                {
+                    SomeRandomProperty = rd.Next(1, 300000),
+                    SomeRandomProperty2 = rd.Next(1, 100)
+                });
+            });
+
+            Stopwatch st = new Stopwatch();
+            st.Start();
+            List<Task> tasks = new List<Task>();
+            foreach (var item in list)
+            {
+                tasks.Add(_cosmosOperator.InsertDocumentAsync(item));
+            }
+            await Task.WhenAll(tasks);
+            st.Stop();
+            
+            st.Restart();
+            foreach (var item in list)
+            {
+                tasks.Add(_cosmosOperator.InsertDocumentAsync(item));
+            }
+            await Task.WhenAll(tasks);
+            st.Stop();
+
+
+            st.Restart();
+            Parallel.ForEach(list, item => {
+                _cosmosOperator.InsertDocumentAsync(item).GetAwaiter().GetResult();
+            });
+            st.Stop();
         }
 
         [TestMethod]
@@ -61,6 +108,35 @@ namespace CosmosScale.Tests
         {
             var results = InsertDocuments(500000);
             CheckAsertResult(results);
+
+            Thread.Sleep(TimeSpan.FromHours(5));
+        }
+        [TestMethod]
+        public async Task Insert500KThreads()
+        {
+            ConcurrentBag<CosmosTestOperationObject> list = new ConcurrentBag<CosmosTestOperationObject>();
+            Random rd = new Random();
+            List<Task> tasks = new List<Task>();
+
+            //Parallel.For(0, 100000000, (i) =>
+            //{
+            //    tasks.Add(_cosmosOperator.InsertDocumentAsync(new CosmosTestOperationObject
+            //    {
+            //        SomeRandomProperty = rd.Next(1, 300000),
+            //        SomeRandomProperty2 = rd.Next(1, 100)
+            //    }));
+            //});
+
+            for (int i = 0; i < 10000000; i++)
+            {
+                tasks.Add(_cosmosOperator.InsertDocumentAsync(new CosmosTestOperationObject
+                {
+                    SomeRandomProperty = rd.Next(1, 300000),
+                    SomeRandomProperty2 = rd.Next(1, 100)
+                }));
+            }
+           
+            await Task.WhenAll(tasks);
         }
 
         [TestMethod]

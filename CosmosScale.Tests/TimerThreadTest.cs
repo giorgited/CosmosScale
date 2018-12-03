@@ -30,6 +30,23 @@ namespace CosmosScale.Tests
         [TestMethod]
         public void TimerTest()
         {
+            _cosmosOperator = new CosmosScaleOperator(400, 20000, "Test", "CollectionTest", _client);
+            _cosmosOperator.QueryCosmos<dynamic>("select top 1 * from c");
+
+
+            _cosmosOperator = new CosmosScaleOperator(400, 20000, "Test", "CollectionTest", _client);
+            _cosmosOperator.QueryCosmos<dynamic>("select top 1 * from c");
+
+
+            _cosmosOperator = new CosmosScaleOperator(400, 20000, "Test", "CollectionTest", _client);
+            _cosmosOperator.QueryCosmos<dynamic>("select top 1 * from c");
+
+
+            _cosmosOperator = new CosmosScaleOperator(400, 20000, "Test", "CollectionTest", _client);
+            _cosmosOperator.QueryCosmos<dynamic>("select top 1 * from c");
+
+
+            _cosmosOperator = new CosmosScaleOperator(400, 20000, "Test", "CollectionTest", _client);
             _cosmosOperator.QueryCosmos<dynamic>("select top 1 * from c");
 
             Thread.Sleep((int)TimeSpan.FromMinutes(5).TotalMilliseconds);

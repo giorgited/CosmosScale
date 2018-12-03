@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -20,7 +21,7 @@ namespace CosmosScale
 
 
         private static System.Timers.Timer aTimer;
-        private static Dictionary<Tuple<string,string>, Tuple<DateTime, int>> latestActivty = new Dictionary<Tuple<string, string>, Tuple<DateTime, int>>();
+        private static ConcurrentDictionary<Tuple<string,string>, Tuple<DateTime, int>> latestActivty = new ConcurrentDictionary<Tuple<string, string>, Tuple<DateTime, int>>();
         private static bool timerSet = false;
 
         public CosmosScaleOperator(int minimumRu, int maximumRu, string databaseName, string collectionName, DocumentClient client, string partitionKeyPropertyName = "/id")
@@ -33,7 +34,8 @@ namespace CosmosScale
             _collectionPartitionKey = partitionKeyPropertyName;
             _collectionUri = UriFactory.CreateDocumentCollectionUri(databaseName, collectionName);
 
-            latestActivty.Add(new Tuple<string, string>(_databaseName, _collectionName), new Tuple<DateTime,int>(DateTime.Now, _minRu));
+            
+            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = new Tuple<DateTime,int>(DateTime.Now, _minRu);
 
             if (!timerSet)
             {
@@ -218,7 +220,7 @@ namespace CosmosScale
                 var latestActivityDate = activity.Value.Item1;
                 var minRu = activity.Value.Item2;
 
-                if (DateTime.Now.AddMinutes(-1) > latestActivityDate)
+                if (DateTime.Now.AddMinutes(-5) > latestActivityDate)
                 {
                     //no activity for 5 minutes.. scale back down to minRu
                     ScaleLogic.ScaleDownCollectionAsync(_client, databaseName, collectioName, minRu).Wait();
