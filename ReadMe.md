@@ -36,8 +36,9 @@ await op.InitializeResourcesAsync();
 
 To do CRUD operations, simply call the repsective function for 1-N documents.
 ```
+await _cosmosOperator.QueryCosmos<OBJ>("SELECT * FROM C");
 await _cosmosOperator.InsertDocumentAsync(some_document);
-await _cosmosOperator.InsertDocumentAsync(some_document.id);
+await _cosmosOperator.DeleteDocumentAsync(some_document.id);
 await _cosmosOperator.ReplaceDocument(some_document.id, new_document);
 ```
 
