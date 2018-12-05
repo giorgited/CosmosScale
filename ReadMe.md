@@ -41,15 +41,10 @@ await _cosmosOperator.InsertDocumentAsync(some_document.id);
 await _cosmosOperator.ReplaceDocument(some_document.id, new_document);
 ```
 
-
-## Contributing
-
-Please read [CONTRIBUTING.md](https://gist.github.com/PurpleBooth/b24679402957c63ec426) for details on our code of conduct, and the process for submitting pull requests to us.
-
 ## Authors
 
 * **Giorgi (Gio) Tediashvili** - *Initial work* - [Gio](https://github.com/giorgited)
 
-See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
+See also the list of [contributors](https://github.com/giorgited/CosmosScale/contributors) who participated in this project.
 
 
