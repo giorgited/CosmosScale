@@ -25,7 +25,7 @@ namespace CosmosScale.Tests
             Trace.Listeners.Add(tr2);
             Trace.AutoFlush = true;
 
-            _client = new DocumentClient(new Uri("https://cosmosscaletest.documents.azure.com:443/"), "vsHDH7Oa1Vstpbg6k3t7dJsvQzkDvlXssTMM4MWdaUw3Iyofprh9bRvVLRn2ggr86WhV7icgRJaVBVkJTBWRmg==",
+            _client = new DocumentClient(new Uri(Constants.COSMOS_URI), Constants.COSMOS_PASS,
               new ConnectionPolicy
               {
                   ConnectionMode = ConnectionMode.Direct,
