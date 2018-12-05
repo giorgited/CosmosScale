@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace CosmosScale.Tests
 {
@@ -17,6 +18,10 @@ namespace CosmosScale.Tests
 
         public DeleteTests()
         {
+            TextWriterTraceListener tr2 = new TextWriterTraceListener(System.IO.File.CreateText($"{DateTime.Now.Ticks}_{Guid.NewGuid()}.txt"));
+            Trace.Listeners.Add(tr2);
+            Trace.AutoFlush = true;
+
             _client = new DocumentClient(new Uri("https://cosmosscaletest.documents.azure.com:443/"), "vsHDH7Oa1Vstpbg6k3t7dJsvQzkDvlXssTMM4MWdaUw3Iyofprh9bRvVLRn2ggr86WhV7icgRJaVBVkJTBWRmg==",
               new ConnectionPolicy
               {

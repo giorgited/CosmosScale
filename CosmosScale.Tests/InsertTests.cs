@@ -17,8 +17,14 @@ namespace CosmosScale.Tests
         private DocumentClient _client;
         private CosmosScaleOperator _cosmosOperator;
 
+        private Random rd = new Random();
+
         public InsertTests()
         {
+            TextWriterTraceListener tr2 = new TextWriterTraceListener(System.IO.File.CreateText($"{DateTime.Now.Ticks}_{Guid.NewGuid()}.txt"));
+            Trace.Listeners.Add(tr2);
+            Trace.AutoFlush = true;
+
             _client = new DocumentClient(new Uri("https://cosmosscaletest.documents.azure.com:443/"), "vsHDH7Oa1Vstpbg6k3t7dJsvQzkDvlXssTMM4MWdaUw3Iyofprh9bRvVLRn2ggr86WhV7icgRJaVBVkJTBWRmg==",
               new ConnectionPolicy
               {
@@ -38,22 +44,50 @@ namespace CosmosScale.Tests
         }
 
         [TestMethod]
-        public void Insert10K()
+        public async Task Insert10K()
         {
-            Stopwatch st = new Stopwatch();
-            st.Start();
+            CosmosScaleOperator op1 = new CosmosScaleOperator(600, 1500, "NewDatabase1", "test", _client);
+            await op1.InitializeResourcesAsync();
 
-            var results = InsertDocuments(10000);
-            CheckAsertResult(results);
+            CosmosScaleOperator op2 = new CosmosScaleOperator(800, 5000, "NewDatabase2", "test", _client);
+            await op2.InitializeResourcesAsync();
 
-            st.Stop();
-            return;
+            CosmosScaleOperator op3 = new CosmosScaleOperator(400, 2000, "NewDatabase3", "test", _client);
+            await op3.InitializeResourcesAsync();
+
+            CosmosScaleOperator op4 = new CosmosScaleOperator(800, 9000, "NewDatabase1", "test", _client);
+            await op4.InitializeResourcesAsync();
+
+            await Insert10KIntoManyCollections(op1);
+            await Insert10KIntoManyCollections(op2);
+            await Insert10KIntoManyCollections(op3);
+            await Insert10KIntoManyCollections(op4);
+
         }
+        private async Task Insert10KIntoManyCollections(CosmosScaleOperator op)
+        {
+            ConcurrentBag<CosmosTestOperationObject> list = new ConcurrentBag<CosmosTestOperationObject>();
+            Parallel.For(0, 10000, (i) =>
+            {
+                list.Add(new CosmosTestOperationObject
+                {
+                    SomeRandomProperty = rd.Next(1, 300000),
+                    SomeRandomProperty2 = rd.Next(1, 100)
+                });
+            });
+
+            List<Task> tasks = new List<Task>();
+            foreach (var item in list)
+            {
+                tasks.Add(op.InsertDocumentAsync(item));
+            }
+            await Task.WhenAll(tasks);
+        }
+
         [TestMethod]
         public async Task Insert10KBenchmark()
         {
             ConcurrentBag<CosmosTestOperationObject> list = new ConcurrentBag<CosmosTestOperationObject>();
-            Random rd = new Random();
             Parallel.For(0, 10000, (i) =>
             {
                 list.Add(new CosmosTestOperationObject
@@ -94,6 +128,8 @@ namespace CosmosScale.Tests
         {
             var results = InsertDocuments(20000);
             CheckAsertResult(results);
+
+            Thread.Sleep(TimeSpan.FromMinutes(7));
         }
 
         [TestMethod]
@@ -156,7 +192,6 @@ namespace CosmosScale.Tests
         private List<CosmosOperationResponse> InsertDocuments(int count)
         {     
             ConcurrentBag<CosmosTestOperationObject> list = new ConcurrentBag<CosmosTestOperationObject>();
-            Random rd = new Random();
             Parallel.For(0, count, (i) =>
             {
                 list.Add(new CosmosTestOperationObject
@@ -168,6 +203,7 @@ namespace CosmosScale.Tests
 
             ConcurrentBag<CosmosOperationResponse> results = new ConcurrentBag<CosmosOperationResponse>();
 
+            Trace.WriteLine($"Inserting {count} documents.");
             Parallel.ForEach(list, item =>
             {
                 results.Add(_cosmosOperator.InsertDocumentAsync(item).GetAwaiter().GetResult());

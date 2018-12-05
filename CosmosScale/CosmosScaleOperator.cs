@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
 using Microsoft.Azure.CosmosDB.BulkExecutor;
 using Microsoft.Azure.Documents;
 using Microsoft.Azure.Documents.Client;
+using Newtonsoft.Json;
 
 namespace CosmosScale
 {
@@ -17,11 +19,18 @@ namespace CosmosScale
         private Uri _collectionUri;
         private string _databaseName, _collectionName;
         private string _collectionPartitionKey;
-        private const int _maximumRetryCount = 30;
+        private const int _maximumRetryCount = 10;
 
 
         private static System.Timers.Timer aTimer;
-        private static ConcurrentDictionary<Tuple<string,string>, Tuple<DateTime, int>> latestActivty = new ConcurrentDictionary<Tuple<string, string>, Tuple<DateTime, int>>();
+
+        //Tuple<string,string> --> databaseName, collectionName
+        //Tuple<DateTime, int> --> latestActivityDate, minRu
+        private static ConcurrentDictionary<Tuple<string,string>, DateTime> latestActivty = new ConcurrentDictionary<Tuple<string, string>, DateTime>();
+
+        //Tuple<string, string, int --> databaseName, collectionName, minRu
+        private static ConcurrentBag<Tuple<string, string, int>> collectionsCacheAside = new ConcurrentBag<Tuple<string, string, int>>();
+
         private static bool timerSet = false;
 
         public CosmosScaleOperator(int minimumRu, int maximumRu, string databaseName, string collectionName, DocumentClient client, string partitionKeyPropertyName = "/id")
@@ -33,19 +42,60 @@ namespace CosmosScale
             _collectionName = collectionName;
             _collectionPartitionKey = partitionKeyPropertyName;
             _collectionUri = UriFactory.CreateDocumentCollectionUri(databaseName, collectionName);
-
             
-            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = new Tuple<DateTime,int>(DateTime.Now, _minRu);
+            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+
+            if (!collectionsCacheAside.Contains(new Tuple<string, string, int>(databaseName, collectionName, minimumRu)))
+            {
+                collectionsCacheAside.Add(new Tuple<string, string, int>(databaseName, collectionName, minimumRu));
+            }
+
 
             if (!timerSet)
             {
                 SetTimer();
+                timerSet = true;
             }
+        }
+
+        public async Task InitializeResourcesAsync(RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = null)
+        {
+            Database database = new Database();
+            database.Id = _databaseName;
+            var databaseUri = UriFactory.CreateDatabaseUri(_databaseName);
+
+            DocumentCollection documentCollection = new DocumentCollection();
+            documentCollection.Id = _collectionName;
+
+            collectionPartitionProperty = collectionPartitionProperty ?? "/id";
+            documentCollection.PartitionKey = new PartitionKeyDefinition() { Paths = new System.Collections.ObjectModel.Collection<string> { collectionPartitionProperty } };
+
+            if (databaseRequestOptions == null)
+            {
+                await _client.CreateDatabaseIfNotExistsAsync(database);
+            }
+            else
+            {
+                await _client.CreateDatabaseIfNotExistsAsync(database, databaseRequestOptions);
+            }
+            
+            if (collectionRequestOptions == null)
+            {
+               await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection, collectionRequestOptions);
+            }
+            else
+            {
+               await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection);
+            }
+
+            Trace.WriteLine($"Initialized Resources {_databaseName}, {_collectionName}");
         }
         
 
         public IEnumerable<T> QueryCosmos<T>(string cosmosSqlQuery, int maxItemCount = -1, bool QueryCrossPartition = true)
         {
+            Trace.WriteLine($"Querying cosmos: {cosmosSqlQuery}, {maxItemCount}, {QueryCrossPartition}");
+
             RefreshLatestActvity();
             FeedOptions queryOptions = new FeedOptions { MaxItemCount = maxItemCount, EnableCrossPartitionQuery = QueryCrossPartition };
 
@@ -61,6 +111,7 @@ namespace CosmosScale
         #region INSERT
         public async Task<CosmosOperationResponse> InsertDocumentAsync(object document)
         {
+            //Trace.WriteLine($"Inserting: {JsonConvert.SerializeObject(document)}, in {_databaseName}|{_collectionName}");
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await InsertDocumentAsync(document, 0, result);
@@ -86,7 +137,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu);
+                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await InsertDocumentAsync(document, retryCount++, result);
                     }
@@ -102,6 +153,8 @@ namespace CosmosScale
         #region DELETE
         public async Task<CosmosOperationResponse> DeleteDocumentAsync(string id, object partitionKey = null)
         {
+            Trace.WriteLine($"Deleting: {id}, in {_databaseName}|{_collectionName}");
+
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await DeleteDocumentAsync(id, 0, result, partitionKey);
@@ -136,7 +189,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu);
+                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await DeleteDocumentAsync(id, retryCount++, result, partitionKey);
                     }
@@ -152,6 +205,8 @@ namespace CosmosScale
         #region REPLACE
         public async Task<CosmosOperationResponse> ReplaceDocument(string oldDocumentId, object newDocument)
         {
+            Trace.WriteLine($"Replacing {oldDocumentId} with {JsonConvert.SerializeObject(newDocument)}, in {_databaseName}|{_collectionName}");
+
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await ReplaceDocumentAsync(oldDocumentId, newDocument, 0, result);
@@ -178,7 +233,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu);
+                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await ReplaceDocumentAsync(oldDocumentId, newDocument, retryCount++, result);
                     }
@@ -197,10 +252,10 @@ namespace CosmosScale
         {
             if (_databaseName == null || _collectionName == null)
             {
-                throw new Exception("databaseName or collectionName was not initialized.");
+                return;
             }
 
-            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = new Tuple<DateTime, int>(DateTime.Now, _minRu);
+            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
         }
         private static void SetTimer()
         {
@@ -209,22 +264,32 @@ namespace CosmosScale
             aTimer.Elapsed += OnTimedEvent;
             aTimer.AutoReset = true;
             aTimer.Enabled = true;
+
+            Trace.WriteLine($"Volleyball timer set.");
         }
         private static void OnTimedEvent(Object source, ElapsedEventArgs e)
         {
-            foreach (var activity in latestActivty)
+            Trace.WriteLine($"Timer triggered!!");
+
+            foreach (var collection in collectionsCacheAside)
             {
-                var databaseName = activity.Key.Item1;
-                var collectioName = activity.Key.Item2;
-
-                var latestActivityDate = activity.Value.Item1;
-                var minRu = activity.Value.Item2;
-
-                if (DateTime.Now.AddMinutes(-5) > latestActivityDate)
+                if (latestActivty.TryGetValue(new Tuple<string, string>(collection.Item1, collection.Item2), out var latestActivityForCollection))
                 {
-                    //no activity for 5 minutes.. scale back down to minRu
-                    ScaleLogic.ScaleDownCollectionAsync(_client, databaseName, collectioName, minRu).Wait();
-                }
+                    var databaseName = collection.Item1;
+                    var collectioName = collection.Item2;
+                    var minRu = collection.Item3;
+
+                    if (DateTime.Now.AddMinutes(-5) > latestActivityForCollection)
+                    {
+                        //no activity for 5 minutes.. scale back down to minRu
+                        ScaleLogic.ScaleDownCollectionAsync(_client, databaseName, collectioName, minRu).Wait();
+                        Trace.WriteLine($"Inactivity longer then 5minutes in {databaseName}|{collectioName}, scaling down to ${minRu}");
+                    }
+                    else
+                    {
+                        Trace.WriteLine($"Inactivity not longer then 5minutes in {databaseName}|{collectioName}.");
+                    }
+                }                
             }
         }
 
