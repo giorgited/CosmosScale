@@ -202,7 +202,7 @@ namespace CosmosScale
         #endregion
 
         #region REPLACE
-        public async Task<CosmosOperationResponse> ReplaceDocument(string oldDocumentId, object newDocument)
+        public async Task<CosmosOperationResponse> ReplaceDocumentAsync(string oldDocumentId, object newDocument)
         {
             Trace.WriteLine($"Replacing {oldDocumentId} with {JsonConvert.SerializeObject(newDocument)}, in {_databaseName}|{_collectionName}");
 
