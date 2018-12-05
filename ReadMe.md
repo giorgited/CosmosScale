@@ -5,8 +5,8 @@ User is capable of adjusting the maximum RU to make sure that the software does 
 In addition, there is a cool down algorithm that tracks the activities for each collection and scales down based on the minimum RU provided by the user. Scale down occurs for 5 minute of inactivity.
 
 ## Getting Started
+Using the library is simple. Download the latest nuget package from https://www.nuget.org/packages/CosmosAutoScaler. Currently the supported functionalities are: Insert, Delete, Replace, and Query. Bulk operations are coming soon.
 
-Using the library is simple. Search and download the latest nuget package.
 
 
 ### Usage
