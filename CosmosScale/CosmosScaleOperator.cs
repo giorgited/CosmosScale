@@ -258,7 +258,7 @@ namespace CosmosScale
         private static void SetTimer()
         {
             // Create a timer with a 15 minute interval.
-            aTimer = new Timer(TimeSpan.FromSeconds(10).TotalMilliseconds);
+            aTimer = new Timer(TimeSpan.FromMinutes(15).TotalMilliseconds);
             aTimer.Elapsed += OnTimedEvent;
             aTimer.AutoReset = true;
             aTimer.Enabled = true;
