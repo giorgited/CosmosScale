@@ -2,6 +2,16 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>CosmosAutoScaler</PackageId>
+    <Version>0.0.1</Version>
+    <Authors>Giorgi Tediashvili</Authors>
+    <Product>CosmosAutoScaler</Product>
+    <Description>Cosmos Auto Scaler is a library for automatically scaling the RU based on the request load. The algorithm listens to the 429 returned from CosmosDB and increases the limit by increments of 500RU for each iteration. User is capable of adjusting the maximum RU to make sure that the software does not exceed the budget. The library is thread safe, there fore it can be called in parallel. Library will only do the scale operation once for every 1 second. In addition, there is a cool down algorithm that tracks the activities for each collection and scales down based on the minimum RU provided by the user. Scale down occurs for 5 minute of inactivity.</Description>
+    <PackageProjectUrl>https://github.com/giorgited/CosmosScale</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/giorgited/CosmosScale</RepositoryUrl>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageTags>cosmos, scale, autoscale, cosmosru, requestunit, cosmosdb, azure, documentdb</PackageTags>
+    <PackageReleaseNotes>This is a beta version of the auto scaler.</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

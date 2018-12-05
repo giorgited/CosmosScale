@@ -45,7 +45,7 @@ namespace CosmosScale
 
             if (collectionsCacheAside.Any(c => c.Item1 == databaseName && c.Item2 == collectionName))
             {
-                Trace.WriteLine($"{databaseName}|{collectionName} already exists in collection. Skipping caching.")
+                Trace.WriteLine($"{databaseName}|{collectionName} already exists in collection. Skipping caching.");
                 //item for this db and collection exist, min RU will NOT be replaced, min RU should be chosen globaly
             } else
             {
