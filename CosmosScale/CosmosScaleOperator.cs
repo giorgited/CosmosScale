@@ -30,9 +30,7 @@ namespace CosmosScale
 
         //Tuple<string, string, int --> databaseName, collectionName, minRu
         private static ConcurrentBag<Tuple<string, string, int>> collectionsCacheAside = new ConcurrentBag<Tuple<string, string, int>>();
-
-        private static bool timerSet = false;
-
+       
         public CosmosScaleOperator(int minimumRu, int maximumRu, string databaseName, string collectionName, DocumentClient client, string partitionKeyPropertyName = "/id")
         {
             _client = client;
@@ -45,17 +43,18 @@ namespace CosmosScale
             
             latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
 
-            if (!collectionsCacheAside.Contains(new Tuple<string, string, int>(databaseName, collectionName, minimumRu)))
+            if (collectionsCacheAside.Any(c => c.Item1 == databaseName && c.Item2 == collectionName))
+            {
+                Trace.WriteLine($"{databaseName}|{collectionName} already exists in collection. Skipping caching.")
+                //item for this db and collection exist, min RU will NOT be replaced, min RU should be chosen globaly
+            } else
             {
                 collectionsCacheAside.Add(new Tuple<string, string, int>(databaseName, collectionName, minimumRu));
             }
-
-
-            if (!timerSet)
-            {
-                SetTimer();
-                timerSet = true;
-            }
+        }
+        static CosmosScaleOperator()
+        {
+            SetTimer();
         }
 
         public async Task InitializeResourcesAsync(RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = null)
@@ -269,8 +268,6 @@ namespace CosmosScale
         }
         private static void OnTimedEvent(Object source, ElapsedEventArgs e)
         {
-            Trace.WriteLine($"Timer triggered!!");
-
             foreach (var collection in collectionsCacheAside)
             {
                 if (latestActivty.TryGetValue(new Tuple<string, string>(collection.Item1, collection.Item2), out var latestActivityForCollection))
@@ -283,11 +280,7 @@ namespace CosmosScale
                     {
                         //no activity for 5 minutes.. scale back down to minRu
                         ScaleLogic.ScaleDownCollectionAsync(_client, databaseName, collectioName, minRu).Wait();
-                        Trace.WriteLine($"Inactivity longer then 5minutes in {databaseName}|{collectioName}, scaling down to ${minRu}");
-                    }
-                    else
-                    {
-                        Trace.WriteLine($"Inactivity not longer then 5minutes in {databaseName}|{collectioName}.");
+                        Trace.WriteLine($"Inactivity longer then 5 minutes in {databaseName}|{collectioName}, scaling down to {minRu}RU.");
                     }
                 }                
             }

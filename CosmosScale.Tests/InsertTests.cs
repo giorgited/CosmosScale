@@ -30,9 +30,8 @@ namespace CosmosScale.Tests
               {
                   ConnectionMode = ConnectionMode.Direct,
                   ConnectionProtocol = Protocol.Tcp,
-                  RequestTimeout = TimeSpan.FromMinutes(2)
+                  RequestTimeout = TimeSpan.FromMinutes(5)
               });
-
             _cosmosOperator = new CosmosScaleOperator(400, 20000, "Test", "CollectionTest", _client);
         }
 
@@ -46,7 +45,7 @@ namespace CosmosScale.Tests
         [TestMethod]
         public async Task Insert10K()
         {
-            CosmosScaleOperator op1 = new CosmosScaleOperator(600, 1500, "NewDatabase1", "test", _client);
+            CosmosScaleOperator op1 = new CosmosScaleOperator(600, 1500, "NewDatabase1", "test", _client);            
             await op1.InitializeResourcesAsync();
 
             CosmosScaleOperator op2 = new CosmosScaleOperator(800, 5000, "NewDatabase2", "test", _client);
@@ -59,9 +58,8 @@ namespace CosmosScale.Tests
             await op4.InitializeResourcesAsync();
 
             await Insert10KIntoManyCollections(op1);
-            await Insert10KIntoManyCollections(op2);
-            await Insert10KIntoManyCollections(op3);
-            await Insert10KIntoManyCollections(op4);
+
+            Thread.Sleep(TimeSpan.FromMinutes(7));
 
         }
         private async Task Insert10KIntoManyCollections(CosmosScaleOperator op)

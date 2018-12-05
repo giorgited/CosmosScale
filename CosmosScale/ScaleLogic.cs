@@ -18,76 +18,77 @@ namespace CosmosScale
 
         public static async Task<ScaleOperation> ScaleUpCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu, int maxRu)
         {
-            lock (lockingObject)
+            try
             {
-                try
+                var latestActivty = DateTime.MinValue;
+                if (latestScaleUp.TryGetValue(new Tuple<string, string>(_databaseName, _collectionName), out var res))
                 {
-                    var latestActivty = DateTime.MinValue;
-                    if (latestScaleUp.TryGetValue(new Tuple<string, string>(_databaseName, _collectionName), out var res))
+                    latestActivty = DateTime.Now;
+                }
+                if (DateTime.Now.AddSeconds(-1) < latestActivty)
+                {
+                    Trace.WriteLine($"Tried to scale {_databaseName}|{_collectionName} but there has already been a scale in past 1sec.");
+                    return new ScaleOperation()
                     {
-                        latestActivty = DateTime.Now;
-                    }
-                    if (DateTime.Now.AddSeconds(-5) < latestActivty)
+                        ScaledSuccess = false,
+                        ScaleFailReason = "There has been another scale within 1 second span."
+                    };
+                }
+
+                Database database = _client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{_databaseName}\"").AsEnumerable().First();
+
+                List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
+
+                foreach (var collection in collections)
+                {
+                    if (collection.Id == _collectionName)
                     {
-                        Trace.WriteLine($"Tried to scale {_databaseName}|{_collectionName} but there has already been a scale in past 5 minutes.");
-                        return new ScaleOperation()
+                        var offer = (OfferV2)_client.CreateOfferQuery()
+                            .Where(r => r.ResourceLink == collection.SelfLink)
+                            .AsEnumerable()
+                            .SingleOrDefault();
+
+                        var currentRu = offer.Content.OfferThroughput;
+
+                        if (currentRu + 500 <= maxRu)
                         {
-                            ScaledSuccess = false,
-                            ScaleFailReason = "There has been another scale within 5 seconds."
-                        };
-                    }
+                            offer = new OfferV2(offer, (int)currentRu + 500);
 
-                    Database database = _client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{_databaseName}\"").AsEnumerable().First();
+                            _client.ReplaceOfferAsync(offer).Wait();
 
-                    List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
+                            
+                            latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+                            
 
-                    foreach (var collection in collections)
-                    {
-                        if (collection.Id == _collectionName)
-                        {
-                            var offer = (OfferV2)_client.CreateOfferQuery()
-                                .Where(r => r.ResourceLink == collection.SelfLink)
-                                .AsEnumerable()
-                                .SingleOrDefault();
+                            currentRu = currentRu + 500;
 
-                            var currentRu = offer.Content.OfferThroughput;
+                            ScaleOperation op = new ScaleOperation();
+                            op.ScaledFrom = (int)currentRu;
+                            op.ScaledTo = (int)currentRu + 500;
+                            op.OperationTime = DateTime.Now;
 
-                            if (currentRu + 500 <= maxRu)
-                            {
-                                offer = new OfferV2(offer, (int)currentRu + 500);
+                            Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)currentRu + 500}");
 
-                                _client.ReplaceOfferAsync(offer).Wait();
-
-                                latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
-                                currentRu = currentRu + 500;
-
-                                ScaleOperation op = new ScaleOperation();
-                                op.ScaledFrom = (int)currentRu;
-                                op.ScaledTo = (int)currentRu + 500;
-                                op.OperationTime = DateTime.Now;
-
-                                Trace.WriteLine($"Sscaled {_databaseName}|{_collectionName} to {(int)currentRu + 500}");
-
-                                return op;
-                            }
+                            return op;
                         }
                     }
+                }
 
-                    return new ScaleOperation()
-                    {
-                        ScaledSuccess = false,
-                        ScaleFailReason = "Could not find the collection to scale."
-                    };
-                }
-                catch (Exception e)
+                return new ScaleOperation()
                 {
-                    return new ScaleOperation()
-                    {
-                        ScaledSuccess = false,
-                        ScaleFailReason = e.Message
-                    };
-                }
+                    ScaledSuccess = false,
+                    ScaleFailReason = "Could not find the collection to scale."
+                };
             }
+            catch (Exception e)
+            {
+                return new ScaleOperation()
+                {
+                    ScaledSuccess = false,
+                    ScaleFailReason = e.Message
+                };
+            }
+            
         }
 
         public static async Task ScaleDownCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu)
