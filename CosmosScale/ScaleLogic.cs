@@ -27,7 +27,7 @@ namespace CosmosScale
                 }
                 if (DateTime.Now.AddSeconds(-1) < latestActivty)
                 {
-                    Trace.WriteLine($"Tried to scale {_databaseName}|{_collectionName} but there has already been a scale in past 1sec.");
+                    //Trace.WriteLine($"Tried to scale {_databaseName}|{_collectionName} but there has already been a scale in past 1sec.");
                     return new ScaleOperation()
                     {
                         ScaledSuccess = false,
@@ -49,25 +49,23 @@ namespace CosmosScale
                             .SingleOrDefault();
 
                         var currentRu = offer.Content.OfferThroughput;
+                        var newRu = currentRu + 500;
 
-                        if (currentRu + 500 <= maxRu)
+                        if (newRu <= maxRu)
                         {
-                            offer = new OfferV2(offer, (int)currentRu + 500);
+                            offer = new OfferV2(offer, (int)newRu);
 
                             _client.ReplaceOfferAsync(offer).Wait();
 
                             
                             latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
-                            
-
-                            currentRu = currentRu + 500;
 
                             ScaleOperation op = new ScaleOperation();
                             op.ScaledFrom = (int)currentRu;
-                            op.ScaledTo = (int)currentRu + 500;
+                            op.ScaledTo = (int)newRu;
                             op.OperationTime = DateTime.Now;
 
-                            Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)currentRu + 500}");
+                            Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)newRu}");
 
                             return op;
                         }

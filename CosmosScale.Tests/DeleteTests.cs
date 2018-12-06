@@ -103,12 +103,5 @@ namespace CosmosScale.Tests
 
             Assert.AreEqual(unsuccessCount, 0);
         }
-
-
-
-
     }
-    
-
-    
 }

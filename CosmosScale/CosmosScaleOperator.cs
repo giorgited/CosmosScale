@@ -92,8 +92,6 @@ namespace CosmosScale
 
         public IEnumerable<T> QueryCosmos<T>(string cosmosSqlQuery, int maxItemCount = -1, bool QueryCrossPartition = true)
         {
-            Trace.WriteLine($"Querying cosmos: {cosmosSqlQuery}, {maxItemCount}, {QueryCrossPartition}");
-
             RefreshLatestActvity();
             FeedOptions queryOptions = new FeedOptions { MaxItemCount = maxItemCount, EnableCrossPartitionQuery = QueryCrossPartition };
 
@@ -151,8 +149,6 @@ namespace CosmosScale
         #region DELETE
         public async Task<CosmosOperationResponse> DeleteDocumentAsync(string id, object partitionKey = null)
         {
-            Trace.WriteLine($"Deleting: {id}, in {_databaseName}|{_collectionName}");
-
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await DeleteDocumentAsync(id, 0, result, partitionKey);
