@@ -1,0 +1,18 @@
+﻿using CosmosScale.Models;
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CosmosScale.MetaDataOperator
+{
+    internal interface IMetaDataOperator
+    {
+        Task AddActivity(string databaseName, string collectionName, DateTimeOffset date, ActivityStrength activityStrength);
+        Activity GetLatestActivity(string databaseName, string collectionName);
+
+
+        Task AddActiveCollection(string databaseName, string collectionName, int minimumRu);
+        IEnumerable<ActiveCollection> GetAllActiveCollections();
+    }
+}
