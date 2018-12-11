@@ -18,11 +18,7 @@ namespace CosmosScale.Tests
     {
         private static DocumentClient _client;
         private static CosmosScaleOperator _cosmosOperator;
-        private static Uri _collectionUri;
         private static Random rd = new Random();
-
-        private const string dbName = "CollectionBenchmarkingTest";
-        private const string InsertCollectionName = "RegularInsert";
 
         private const int totalLoopCount = 3;
 
@@ -41,11 +37,6 @@ namespace CosmosScale.Tests
                   ConnectionProtocol = Protocol.Tcp,
                   RequestTimeout = TimeSpan.FromMinutes(5)
               });
-
-            _cosmosOperator = new CosmosScaleOperator(minimumRU, maximumRU, dbName, InsertCollectionName, _client);
-            _cosmosOperator.Initialize().Wait();
-
-            _collectionUri = UriFactory.CreateDocumentCollectionUri(dbName, InsertCollectionName);
         }
         
       
@@ -58,29 +49,34 @@ namespace CosmosScale.Tests
             Trace.Listeners.Add(tr);
             Trace.AutoFlush = true;
 
-            var res5k = await InsertAsBulkCAS(5000);
+            _cosmosOperator = new CosmosScaleOperator(minimumRU, maximumRU, "test1", "test1", _client);
+            _cosmosOperator.Initialize().Wait();
+            var res5k = await InsertAsBulkCAS(5000, UriFactory.CreateDocumentCollectionUri("test1", "test1"));
             insertResults.Add(res5k);
             Thread.Sleep(TimeSpan.FromMinutes(3));
 
-            var res10K = await InsertAsBulkCAS(10000);
+            _cosmosOperator = new CosmosScaleOperator(minimumRU, maximumRU, "test2", "test2", _client);
+            _cosmosOperator.Initialize().Wait();
+            var res10K = await InsertAsBulkCAS(10000, UriFactory.CreateDocumentCollectionUri("test2", "test2"));
             insertResults.Add(res10K);
             Thread.Sleep(TimeSpan.FromMinutes(3));
 
-            var res50K = await InsertAsBulkCAS(50000);
+            _cosmosOperator = new CosmosScaleOperator(minimumRU, maximumRU, "test3", "test3", _client);
+            _cosmosOperator.Initialize().Wait();
+            var res50K = await InsertAsBulkCAS(50000, UriFactory.CreateDocumentCollectionUri("test3", "test3"));
             insertResults.Add(res50K);
             Thread.Sleep(TimeSpan.FromMinutes(3));
 
-            var res100K = await InsertAsBulkCAS(100000);
+            _cosmosOperator = new CosmosScaleOperator(minimumRU, maximumRU, "test4", "test4", _client);
+            _cosmosOperator.Initialize().Wait();
+            var res100K = await InsertAsBulkCAS(100000, UriFactory.CreateDocumentCollectionUri("test4", "test4"));
             insertResults.Add(res100K);
-            Thread.Sleep(TimeSpan.FromMinutes(3));
+            ReportResults(insertResults, "InsertAsBulkCASReport.txt");
 
-            var res500K = await InsertAsBulkCAS(500000);
-            insertResults.Add(res500K);
+
             Thread.Sleep(TimeSpan.FromMinutes(5));
-
             Trace.Listeners.Remove(tr);
 
-            ReportResults(insertResults, "InsertAsBulkCASReport.txt");
         }
 
         [TestMethod]
@@ -88,25 +84,20 @@ namespace CosmosScale.Tests
         {
             List<InsertResult> insertResults = new List<InsertResult>();
 
-            var res5k = await InsertAsBulk(5000);
+            _cosmosOperator = new CosmosScaleOperator(minimumRU, maximumRU, "test1", "test1", _client);
+            Uri _collection = UriFactory.CreateDocumentCollectionUri("test1", "test1");
+
+            var res5k = await InsertAsBulk(5000, _collection);
             insertResults.Add(res5k);
-            Thread.Sleep(TimeSpan.FromMinutes(3));
 
-            var res10K = await InsertAsBulk(10000);
+            var res10K = await InsertAsBulk(10000, _collection);
             insertResults.Add(res10K);
-            Thread.Sleep(TimeSpan.FromMinutes(3));
 
-            var res50K = await InsertAsBulk(50000);
+            var res50K = await InsertAsBulk(50000, _collection);
             insertResults.Add(res50K);
-            Thread.Sleep(TimeSpan.FromMinutes(3));
 
-            var res100K = await InsertAsBulk(100000);
+            var res100K = await InsertAsBulk(100000, _collection);
             insertResults.Add(res100K);
-            Thread.Sleep(TimeSpan.FromMinutes(3));
-
-            var res500K = await InsertAsBulk(500000);
-            insertResults.Add(res500K);
-            Thread.Sleep(TimeSpan.FromMinutes(3));
 
             ReportResults(insertResults, "InsertAsBulkReport.txt");
         }
@@ -144,7 +135,7 @@ namespace CosmosScale.Tests
 
             Trace.Listeners.Remove(tr);
         }
-        private async Task<InsertResult> InsertAsBulkCAS(int count)
+        private async Task<InsertResult> InsertAsBulkCAS(int count, Uri _collectionUri)
         {
             var totalInsertedStart = (_cosmosOperator.QueryCosmos<long>("select value count(1) from c")).FirstOrDefault();
 
@@ -177,7 +168,7 @@ namespace CosmosScale.Tests
             return result;
         }
                 
-        private async Task<InsertResult> InsertAsBulk(int count)
+        private async Task<InsertResult> InsertAsBulk(int count, Uri _collectionUri)
         {
             var totalInsertedStart = (_cosmosOperator.QueryCosmos<long>("select value count(1) from c")).FirstOrDefault();
 

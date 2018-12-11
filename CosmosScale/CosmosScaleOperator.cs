@@ -27,9 +27,15 @@ namespace CosmosScale
         private static object bulkInsertLock = new object();
         private static System.Timers.Timer aTimer;
 
+        private enum ActivityStrength
+        {
+            Hot,
+            Medium,
+            Cold
+        }
         //Tuple<string,string> --> databaseName, collectionName
         //Tuple<DateTime, int> --> latestActivityDate, minRu
-        private static ConcurrentDictionary<Tuple<string,string>, DateTime> latestActivty = new ConcurrentDictionary<Tuple<string, string>, DateTime>();
+        private static ConcurrentDictionary<Tuple<string, string>, Tuple<DateTime, ActivityStrength>> latestActivty = new ConcurrentDictionary<Tuple<string, string>, Tuple<DateTime, ActivityStrength>>();
 
         //Tuple<string, string, int --> databaseName, collectionName, minRu
         private static ConcurrentBag<Tuple<string, string, int>> collectionsCacheAside = new ConcurrentBag<Tuple<string, string, int>>();
@@ -46,7 +52,7 @@ namespace CosmosScale
             
             //_bulkExecutor.InitializeAsync().Wait();
 
-            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = new Tuple<DateTime, ActivityStrength>(DateTime.Now, ActivityStrength.Cold);
 
             if (collectionsCacheAside.Any(c => c.Item1 == databaseName && c.Item2 == collectionName))
             {
@@ -94,7 +100,7 @@ namespace CosmosScale
 
         public IEnumerable<T> QueryCosmos<T>(string cosmosSqlQuery, int maxItemCount = -1, bool QueryCrossPartition = true)
         {
-            RefreshLatestActvity();
+            RefreshLatestActvity(ActivityStrength.Cold);
             FeedOptions queryOptions = new FeedOptions { MaxItemCount = maxItemCount, EnableCrossPartitionQuery = QueryCrossPartition };
 
             return _client.CreateDocumentQuery<T>(
@@ -109,13 +115,14 @@ namespace CosmosScale
         #region INSERT
         public async Task<CosmosOperationResponse> InsertSingleDocumentAsync(object document)
         {
-            RefreshLatestActvity();
+            RefreshLatestActvity(ActivityStrength.Cold);
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await InsertDocumentAsync(document, 0, result);
         }
         public BulkInsertOpeartionResult BulkInsertDocuments(IEnumerable<object> documents, bool enableUpsert = false, bool disableAutomaticIdGeneration = true, int? maxConcurrencyPerPartitionKeyRange = null, 
             int? maxInMemorySortingBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
         {
+            RefreshLatestActvity(ActivityStrength.Hot);
             lock (bulkInsertLock)
             {
                 var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
@@ -166,12 +173,13 @@ namespace CosmosScale
         #region DELETE
         public async Task<CosmosOperationResponse> DeleteSingleDocumentAsync(string id, object partitionKey = null)
         {
-            RefreshLatestActvity();
+            RefreshLatestActvity(ActivityStrength.Cold);
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await DeleteDocumentAsync(id, 0, result, partitionKey);
         }
         public BulkInsertOpeartionResult BulkDeleteDocuments(string query, int? deleteBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
         {
+            RefreshLatestActvity(ActivityStrength.Hot);
             lock (bulkInsertLock)
             {
                 var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
@@ -229,7 +237,7 @@ namespace CosmosScale
         #region REPLACE
         public async Task<CosmosOperationResponse> ReplaceSignleDocumentAsync(string oldDocumentId, object newDocument)
         {
-            RefreshLatestActvity();
+            RefreshLatestActvity(ActivityStrength.Cold);
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await ReplaceDocumentAsync(oldDocumentId, newDocument, 0, result);
         }
@@ -270,18 +278,18 @@ namespace CosmosScale
 
 
         #region VOLLEYBALL SCALEDOWN
-        private void RefreshLatestActvity()
+        private void RefreshLatestActvity(ActivityStrength activityStrength)
         {
             if (_databaseName == null || _collectionName == null)
             {
                 return;
             }
 
-            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+            latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = new Tuple<DateTime, ActivityStrength>(DateTime.Now, activityStrength); 
         }
         private static void SetTimer()
         {
-            // Create a timer with a 15 minute interval.
+            // Create a timer with a 1 minute interval.
             aTimer = new System.Timers.Timer(TimeSpan.FromMinutes(1).TotalMilliseconds);
             aTimer.Elapsed += OnTimedEvent;
             aTimer.AutoReset = true;
@@ -297,12 +305,29 @@ namespace CosmosScale
                     var collectioName = collection.Item2;
                     var minRu = collection.Item3;
 
-                    if (DateTime.Now.AddMinutes(-1) > latestActivityForCollection)
+                    var latestActivityDateForCollection = latestActivityForCollection.Item1;
+                    var latestActivityStrengthForCollection = latestActivityForCollection.Item2;
+
+                    DateTime dateToCompare = DateTime.MinValue;
+                    switch (latestActivityStrengthForCollection)
+                    {
+                        case ActivityStrength.Hot:
+                            dateToCompare = DateTime.Now.AddMinutes(-3); //3min inactivity
+                            break;
+                        case ActivityStrength.Medium:
+                            dateToCompare = DateTime.Now.AddMinutes(-1); //1min inactivity
+                            break;
+                        case ActivityStrength.Cold:
+                            dateToCompare = DateTime.Now.AddSeconds(-10); //10sec inactivity
+                            break;
+                    }
+
+                    if (dateToCompare > latestActivityDateForCollection)
                     {
                         //no activity for 5 minutes.. scale back down to minRu
                         ScaleLogic.ScaleDownCollectionAsync(_client, databaseName, collectioName, minRu).Wait();
                     }
-                }                
+                }
             }
         }
 
