@@ -25,6 +25,7 @@ namespace CosmosScale
         private const int _maximumRetryCount = 10;
 
         private static object bulkInsertLock = new object();
+        private static object bulkDeleteLock = new object();
         private static System.Timers.Timer aTimer;
 
         private enum ActivityStrength
@@ -33,6 +34,14 @@ namespace CosmosScale
             Medium,
             Cold
         }
+
+        public enum StateMetaDataStorage
+        {
+            PermamentCosmosCollection,
+            TemporaryCosmosCollection,
+            InMemoryCollection
+        }
+
         //Tuple<string,string> --> databaseName, collectionName
         //Tuple<DateTime, int> --> latestActivityDate, minRu
         private static ConcurrentDictionary<Tuple<string, string>, Tuple<DateTime, ActivityStrength>> latestActivty = new ConcurrentDictionary<Tuple<string, string>, Tuple<DateTime, ActivityStrength>>();
@@ -180,7 +189,7 @@ namespace CosmosScale
         public BulkInsertOpeartionResult BulkDeleteDocuments(string query, int? deleteBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             RefreshLatestActvity(ActivityStrength.Hot);
-            lock (bulkInsertLock)
+            lock (bulkDeleteLock)
             {
                 var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
                 var response = _bulkExecutor.BulkDeleteAsync(query, deleteBatchSize, cancellationToken).GetAwaiter().GetResult();
