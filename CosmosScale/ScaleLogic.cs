@@ -39,35 +39,56 @@ namespace CosmosScale
 
                 List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
 
+                bool scaled = false;
                 foreach (var collection in collections)
                 {
                     if (collection.Id == _collectionName)
                     {
-                        var offer = (OfferV2)_client.CreateOfferQuery()
-                            .Where(r => r.ResourceLink == collection.SelfLink)
-                            .AsEnumerable()
-                            .SingleOrDefault();
-
-                        var currentRu = offer.Content.OfferThroughput;
-                        var newRu = currentRu + 500;
-
-                        if (newRu <= maxRu)
+                        lock (lockingObject)
                         {
-                            offer = new OfferV2(offer, (int)newRu);
+                            if (scaled)
+                            {
+                                return new ScaleOperation()
+                                {
+                                    ScaledSuccess = false,
+                                    ScaleFailReason = "Another thread already scaled."
+                                }; ;
+                            }
 
-                            _client.ReplaceOfferAsync(offer).Wait();
+                            var offer = (OfferV2)_client.CreateOfferQuery()
+                           .Where(r => r.ResourceLink == collection.SelfLink)
+                           .AsEnumerable()
+                           .SingleOrDefault();
 
-                            
-                            latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+                            var currentRu = offer.Content.OfferThroughput;
+                            var newRu = currentRu + 500;
 
-                            ScaleOperation op = new ScaleOperation();
-                            op.ScaledFrom = (int)currentRu;
-                            op.ScaledTo = (int)newRu;
-                            op.OperationTime = DateTime.Now;
+                            if (newRu <= maxRu)
+                            {
+                                offer = new OfferV2(offer, (int)newRu);
 
-                            Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)newRu}");
+                                _client.ReplaceOfferAsync(offer).Wait();
 
-                            return op;
+                                latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+
+                                ScaleOperation op = new ScaleOperation();
+                                op.ScaledFrom = (int)currentRu;
+                                op.ScaledTo = (int)newRu;
+                                op.OperationTime = DateTime.Now;
+
+                                Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)newRu}");
+
+                                scaled = true;
+                                return op;
+                            }
+                            else
+                            {
+                                return new ScaleOperation()
+                                {
+                                    ScaledSuccess = false,
+                                    ScaleFailReason = "Maximum RU reached."
+                                };
+                            }
                         }
                     }
                 }
@@ -80,6 +101,8 @@ namespace CosmosScale
             }
             catch (Exception e)
             {
+                Trace.WriteLine(e.Message);
+
                 return new ScaleOperation()
                 {
                     ScaledSuccess = false,
@@ -87,6 +110,79 @@ namespace CosmosScale
                 };
             }
             
+        }
+
+        public static async Task<ScaleOperation> ScaleUpMaxCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu, int maxRu)
+        {
+            try
+            {
+                var latestActivty = DateTime.MinValue;
+                if (latestScaleUp.TryGetValue(new Tuple<string, string>(_databaseName, _collectionName), out var res))
+                {
+                    latestActivty = DateTime.Now;
+                }
+
+                Database database = _client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{_databaseName}\"").AsEnumerable().First();
+
+                List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
+                
+                foreach (var collection in collections)
+                {
+                    if (collection.Id == _collectionName)
+                    {
+                        var offer = (OfferV2)_client.CreateOfferQuery()
+                        .Where(r => r.ResourceLink == collection.SelfLink)
+                        .AsEnumerable()
+                        .SingleOrDefault();
+
+                        var currentRu = offer.Content.OfferThroughput;
+
+                        if (currentRu < maxRu)
+                        {
+                            offer = new OfferV2(offer, (int)maxRu);
+
+                            _client.ReplaceOfferAsync(offer).Wait();
+
+                            latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+
+                            ScaleOperation op = new ScaleOperation();
+                            op.ScaledFrom = (int)currentRu;
+                            op.ScaledTo = (int)maxRu;
+                            op.OperationTime = DateTime.Now;
+
+                            Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)maxRu}");
+                            
+                            return op;
+                        }
+                        else
+                        {
+                            return new ScaleOperation()
+                            {
+                                ScaledSuccess = false,
+                                ScaleFailReason = "Maximum RU reached."
+                            };
+                        }
+                    }
+                    
+                }
+
+                return new ScaleOperation()
+                {
+                    ScaledSuccess = false,
+                    ScaleFailReason = "Could not find the collection to scale."
+                };
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine(e.Message);
+
+                return new ScaleOperation()
+                {
+                    ScaledSuccess = false,
+                    ScaleFailReason = e.Message
+                };
+            }
+
         }
 
         public static async Task ScaleDownCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu)

@@ -32,15 +32,15 @@ namespace CosmosScale.Tests
         public async Task CreateMultipleResources()
         {
             var cosOperator = new CosmosScaleOperator(400, 20000, "Test2", "CollectionTest", _client);
-            await cosOperator.InitializeResourcesAsync();
+            await cosOperator.Initialize();
 
 
             var cosOperator2 = new CosmosScaleOperator(400, 20000, "Test3", "CollectionTest", _client);
-            await cosOperator2.InitializeResourcesAsync();
+            await cosOperator2.Initialize();
 
 
             var cosOperator3 = new CosmosScaleOperator(400, 20000, "Test4", "CollectionTest", _client);
-            await cosOperator3.InitializeResourcesAsync();
+            await cosOperator3.Initialize();
         }
     }
 }

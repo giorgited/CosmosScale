@@ -46,16 +46,16 @@ namespace CosmosScale.Tests
         public async Task Insert10K()
         {
             CosmosScaleOperator op1 = new CosmosScaleOperator(600, 1500, "NewDatabase1", "test", _client);            
-            await op1.InitializeResourcesAsync();
+            await op1.Initialize();
 
             CosmosScaleOperator op2 = new CosmosScaleOperator(800, 5000, "NewDatabase2", "test", _client);
-            await op2.InitializeResourcesAsync();
+            await op2.Initialize();
 
             CosmosScaleOperator op3 = new CosmosScaleOperator(400, 2000, "NewDatabase3", "test", _client);
-            await op3.InitializeResourcesAsync();
+            await op3.Initialize();
 
             CosmosScaleOperator op4 = new CosmosScaleOperator(800, 9000, "NewDatabase1", "test", _client);
-            await op4.InitializeResourcesAsync();
+            await op4.Initialize();
 
             await Insert10KIntoManyCollections(op1);
 
@@ -77,7 +77,7 @@ namespace CosmosScale.Tests
             List<Task> tasks = new List<Task>();
             foreach (var item in list)
             {
-                tasks.Add(op.InsertDocumentAsync(item));
+                tasks.Add(op.InsertSingleDocumentAsync(item));
             }
             await Task.WhenAll(tasks);
         }
@@ -100,7 +100,7 @@ namespace CosmosScale.Tests
             List<Task> tasks = new List<Task>();
             foreach (var item in list)
             {
-                tasks.Add(_cosmosOperator.InsertDocumentAsync(item));
+                tasks.Add(_cosmosOperator.InsertSingleDocumentAsync(item));
             }
             await Task.WhenAll(tasks);
             st.Stop();
@@ -108,7 +108,7 @@ namespace CosmosScale.Tests
             st.Restart();
             foreach (var item in list)
             {
-                tasks.Add(_cosmosOperator.InsertDocumentAsync(item));
+                tasks.Add(_cosmosOperator.InsertSingleDocumentAsync(item));
             }
             await Task.WhenAll(tasks);
             st.Stop();
@@ -116,7 +116,7 @@ namespace CosmosScale.Tests
 
             st.Restart();
             Parallel.ForEach(list, item => {
-                _cosmosOperator.InsertDocumentAsync(item).GetAwaiter().GetResult();
+                _cosmosOperator.InsertSingleDocumentAsync(item).GetAwaiter().GetResult();
             });
             st.Stop();
         }
@@ -163,7 +163,7 @@ namespace CosmosScale.Tests
 
             for (int i = 0; i < 10000000; i++)
             {
-                tasks.Add(_cosmosOperator.InsertDocumentAsync(new CosmosTestOperationObject
+                tasks.Add(_cosmosOperator.InsertSingleDocumentAsync(new CosmosTestOperationObject
                 {
                     SomeRandomProperty = rd.Next(1, 300000),
                     SomeRandomProperty2 = rd.Next(1, 100)
@@ -204,7 +204,7 @@ namespace CosmosScale.Tests
             Trace.WriteLine($"Inserting {count} documents.");
             Parallel.ForEach(list, item =>
             {
-                results.Add(_cosmosOperator.InsertDocumentAsync(item).GetAwaiter().GetResult());
+                results.Add(_cosmosOperator.InsertSingleDocumentAsync(item).GetAwaiter().GetResult());
             });
 
             return results.ToList();

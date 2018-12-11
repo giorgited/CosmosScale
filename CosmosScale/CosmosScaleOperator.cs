@@ -3,8 +3,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using Microsoft.Azure.CosmosDB.BulkExecutor;
 using Microsoft.Azure.Documents;
 using Microsoft.Azure.Documents.Client;
 using Newtonsoft.Json;
@@ -14,13 +16,14 @@ namespace CosmosScale
     public class CosmosScaleOperator
     {
         private static DocumentClient _client;
+        private static BulkExecutor _bulkExecutor;
         private int _minRu, _maxRu;
         private Uri _collectionUri;
         private string _databaseName, _collectionName;
         private string _collectionPartitionKey;
         private const int _maximumRetryCount = 10;
 
-
+        private static object bulkInsertLock = new object();
         private static System.Timers.Timer aTimer;
 
         //Tuple<string,string> --> databaseName, collectionName
@@ -40,6 +43,8 @@ namespace CosmosScale
             _collectionPartitionKey = partitionKeyPropertyName;
             _collectionUri = UriFactory.CreateDocumentCollectionUri(databaseName, collectionName);
             
+            //_bulkExecutor.InitializeAsync().Wait();
+
             latestActivty[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
 
             if (collectionsCacheAside.Any(c => c.Item1 == databaseName && c.Item2 == collectionName))
@@ -56,7 +61,7 @@ namespace CosmosScale
             SetTimer();
         }
 
-        public async Task InitializeResourcesAsync(RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = null)
+        public async Task Initialize(RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = null)
         {
             Database database = new Database();
             database.Id = _databaseName;
@@ -64,9 +69,9 @@ namespace CosmosScale
 
             DocumentCollection documentCollection = new DocumentCollection();
             documentCollection.Id = _collectionName;
+            documentCollection.PartitionKey.Paths.Add(collectionPartitionProperty ?? "/id");
 
             collectionPartitionProperty = collectionPartitionProperty ?? "/id";
-            documentCollection.PartitionKey = new PartitionKeyDefinition() { Paths = new System.Collections.ObjectModel.Collection<string> { collectionPartitionProperty } };
 
             if (databaseRequestOptions == null)
             {
@@ -79,13 +84,15 @@ namespace CosmosScale
             
             if (collectionRequestOptions == null)
             {
-               await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection, collectionRequestOptions);
+                await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection, collectionRequestOptions);
             }
             else
             {
                await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection);
             }
 
+            _bulkExecutor = new BulkExecutor(_client,_client.ReadDocumentCollectionAsync(_collectionUri).GetAwaiter().GetResult());
+            await _bulkExecutor.InitializeAsync();
             Trace.WriteLine($"Initialized Resources {_databaseName}, {_collectionName}");
         }
         
@@ -105,13 +112,24 @@ namespace CosmosScale
         }
 
         #region INSERT
-        public async Task<CosmosOperationResponse> InsertDocumentAsync(object document)
+        public async Task<CosmosOperationResponse> InsertSingleDocumentAsync(object document)
         {
             //Trace.WriteLine($"Inserting: {JsonConvert.SerializeObject(document)}, in {_databaseName}|{_collectionName}");
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await InsertDocumentAsync(document, 0, result);
         }
+        public void BulkInsertDocuments(IEnumerable<object> documents, bool enableUpsert = false, bool disableAutomaticIdGeneration = true, int? maxConcurrencyPerPartitionKeyRange = null, 
+            int? maxInMemorySortingBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            lock (bulkInsertLock)
+            {
+                ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).Wait();
+                _bulkExecutor.BulkImportAsync(documents, enableUpsert, disableAutomaticIdGeneration, maxConcurrencyPerPartitionKeyRange, maxInMemorySortingBatchSize, cancellationToken).Wait();
+                ScaleLogic.ScaleDownCollectionAsync(_client, _databaseName, _collectionName, _minRu).Wait();
+            }
+        }
+
         private async Task<CosmosOperationResponse> InsertDocumentAsync(object document, int retryCount, CosmosOperationResponse result)
         {
             try
@@ -127,6 +145,7 @@ namespace CosmosScale
                 {
                     if (retryCount > _maximumRetryCount)
                     {
+                        Trace.WriteLine("Max rety count reached.");
                         result.Success = false;
                         result.TotalRetries = retryCount;
                         return result;
@@ -147,13 +166,21 @@ namespace CosmosScale
         #endregion
 
         #region DELETE
-        public async Task<CosmosOperationResponse> DeleteDocumentAsync(string id, object partitionKey = null)
+        public async Task<CosmosOperationResponse> DeleteSingleDocumentAsync(string id, object partitionKey = null)
         {
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await DeleteDocumentAsync(id, 0, result, partitionKey);
         }
-
+        public void BulkDeleteDocuments(string query, int? deleteBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            lock (bulkInsertLock)
+            {
+                ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).Wait();
+                _bulkExecutor.BulkDeleteAsync(query, deleteBatchSize, cancellationToken).Wait();
+                ScaleLogic.ScaleDownCollectionAsync(_client, _databaseName, _collectionName, _minRu).Wait();
+            }
+        }
         private async Task<CosmosOperationResponse> DeleteDocumentAsync(string id, int retryCount, CosmosOperationResponse result, object partitionKey = null)
         {
             try
@@ -197,7 +224,7 @@ namespace CosmosScale
         #endregion
 
         #region REPLACE
-        public async Task<CosmosOperationResponse> ReplaceDocumentAsync(string oldDocumentId, object newDocument)
+        public async Task<CosmosOperationResponse> ReplaceSignleDocumentAsync(string oldDocumentId, object newDocument)
         {
             Trace.WriteLine($"Replacing {oldDocumentId} with {JsonConvert.SerializeObject(newDocument)}, in {_databaseName}|{_collectionName}");
 
@@ -254,7 +281,7 @@ namespace CosmosScale
         private static void SetTimer()
         {
             // Create a timer with a 15 minute interval.
-            aTimer = new Timer(TimeSpan.FromMinutes(15).TotalMilliseconds);
+            aTimer = new System.Timers.Timer(TimeSpan.FromMinutes(15).TotalMilliseconds);
             aTimer.Elapsed += OnTimedEvent;
             aTimer.AutoReset = true;
             aTimer.Enabled = true;

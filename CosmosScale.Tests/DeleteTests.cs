@@ -41,7 +41,7 @@ namespace CosmosScale.Tests
             var results = new List<CosmosOperationResponse>();
             Parallel.ForEach(items, item =>
             {
-                results.Add(_cosmosOperator.DeleteDocumentAsync(item.id).GetAwaiter().GetResult());
+                results.Add(_cosmosOperator.DeleteSingleDocumentAsync(item.id).GetAwaiter().GetResult());
             });
 
             CheckAsertResult(results);
@@ -56,7 +56,7 @@ namespace CosmosScale.Tests
             var results = new List<CosmosOperationResponse>();
             Parallel.ForEach(items, item =>
             {
-                _cosmosOperator.DeleteDocumentAsync(item.id).GetAwaiter().GetResult();
+                _cosmosOperator.DeleteSingleDocumentAsync(item.id).GetAwaiter().GetResult();
             });
 
             CheckAsertResult(results);
@@ -70,7 +70,7 @@ namespace CosmosScale.Tests
             var results = new List<CosmosOperationResponse>();
             Parallel.ForEach(items, item =>
             {
-                _cosmosOperator.DeleteDocumentAsync(item.id).GetAwaiter().GetResult();
+                _cosmosOperator.DeleteSingleDocumentAsync(item.id).GetAwaiter().GetResult();
             });
 
             CheckAsertResult(results);
@@ -83,7 +83,7 @@ namespace CosmosScale.Tests
             List<Task> tasks = new List<Task>();
             foreach (var item in items)
             {
-                tasks.Add(_cosmosOperator.DeleteDocumentAsync(item.id));
+                tasks.Add(_cosmosOperator.DeleteSingleDocumentAsync(item.id));
             }
 
             await Task.WhenAll(tasks);

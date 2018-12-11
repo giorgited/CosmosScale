@@ -1,4 +1,5 @@
-﻿using Microsoft.Azure.Documents;
+﻿using Microsoft.Azure.CosmosDB.BulkExecutor;
+using Microsoft.Azure.Documents;
 using Microsoft.Azure.Documents.Client;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
@@ -14,32 +15,25 @@ namespace CosmosScale.Tests
     [TestClass]
     public class BenchmarkingTests
     {
-        private DocumentClient _client;
-        private CosmosScaleOperator _cosmosOperator;
-        private Uri _collectionUri;
-        private Random rd = new Random();
+        private static DocumentClient _client;
+        private static CosmosScaleOperator _cosmosOperator;
+        private static Uri _collectionUri;
+        private static Random rd = new Random();
 
         private const string dbName = "CollectionBenchmarkingTest";
-        private const string InsertCollection = "RegularInsert";
+        private const string InsertCollectionName = "RegularInsert";
         
         private const int totalLoopCount = 5;
 
-        private ConcurrentBag<CosmosTestOperationObject> insertObjects = new ConcurrentBag<CosmosTestOperationObject>();
+        private static ConcurrentBag<CosmosTestOperationObject> insertObjects = new ConcurrentBag<CosmosTestOperationObject>();
 
 
         public BenchmarkingTests()
         {
-            _client = new DocumentClient(new Uri(Constants.COSMOS_URI), Constants.COSMOS_PASS,
-              new ConnectionPolicy
-              {
-                  ConnectionMode = ConnectionMode.Direct,
-                  ConnectionProtocol = Protocol.Tcp,
-                  RequestTimeout = TimeSpan.FromMinutes(5)
-              });
-            _cosmosOperator = new CosmosScaleOperator(400, 5000, dbName, InsertCollection, _client);
-            _cosmosOperator.InitializeResourcesAsync().GetAwaiter().GetResult();
+            Initialize();
+            _cosmosOperator.Initialize().Wait();
 
-            _collectionUri = UriFactory.CreateDocumentCollectionUri(dbName, InsertCollection);
+            _collectionUri = UriFactory.CreateDocumentCollectionUri(dbName, InsertCollectionName);
 
             Parallel.For(0, 100000, (i) =>
             {
@@ -49,6 +43,19 @@ namespace CosmosScale.Tests
                     SomeRandomProperty2 = rd.Next(1, 100)
                 });
             });
+        }
+
+        private void Initialize()
+        {
+            _client = new DocumentClient(new Uri(Constants.COSMOS_URI), Constants.COSMOS_PASS,
+                  new ConnectionPolicy
+                  {
+                      ConnectionMode = ConnectionMode.Direct,
+                      ConnectionProtocol = Protocol.Tcp,
+                      RequestTimeout = TimeSpan.FromMinutes(5)
+                  });
+
+            _cosmosOperator = new CosmosScaleOperator(400, 25000, dbName, InsertCollectionName, _client);
         }
 
         #region 5K
@@ -163,7 +170,7 @@ namespace CosmosScale.Tests
 
             if (inParallel)
             {
-                InsertInParallel(list, insertAsCAS);
+                await InsertInParallel(list, insertAsCAS);
             }
             else
             {
@@ -175,9 +182,12 @@ namespace CosmosScale.Tests
 
         private async Task InsertInSingleThreadAsync(IEnumerable<CosmosTestOperationObject> list, bool insertAsCAS)
         {
+            List<double> totalSeconds = new List<double>();
+            List<double> totalInsert = new List<double>();
+
             for (int i = 0; i < totalLoopCount; i++)
             {
-                deleteAllDocuments();
+                await deleteRecreateCollection();
 
                 Stopwatch st = new Stopwatch();
                 st.Start();
@@ -188,7 +198,7 @@ namespace CosmosScale.Tests
                     {
                         if (insertAsCAS)
                         {
-                            await _cosmosOperator.InsertDocumentAsync(item);
+                            await _cosmosOperator.InsertSingleDocumentAsync(item);
                         }
                         else
                         {
@@ -196,61 +206,71 @@ namespace CosmosScale.Tests
                         }
                     }
                     catch { }
-                }
-               
+                }               
 
                 st.Stop();
 
+                Initialize();
                 var totalInserted = (_cosmosOperator.QueryCosmos<long>("select value count(1) from c")).FirstOrDefault();
                 Trace.WriteLine($"Run {i + 1}: Inserted items in: {st.Elapsed.TotalSeconds}seconds, success rate: {(totalInserted / (double)list.Count()) * 100}");
 
-                if (insertAsCAS)
-                {
-                    ScaleDownCollectionAsync(400).Wait();
-                }
+                totalSeconds.Add(st.Elapsed.TotalSeconds);
+                totalInsert.Add((totalInserted / (double)list.Count()) * 100);
             }
+
+            Trace.WriteLine($"AvgRunTime: {totalSeconds.Average()}, AvgSuccessRate: {totalInsert.Average()}");
         }
-      
-        private void InsertInParallel(IEnumerable<CosmosTestOperationObject> list, bool insertAsCAS)
+
+        private async Task InsertInParallel(IEnumerable<CosmosTestOperationObject> list, bool insertAsCAS)
         {
+            List<double> totalSeconds = new List<double>();
+            List<double> totalInsert = new List<double>();
+
             for (int i = 0; i < totalLoopCount; i++)
             {
-                deleteAllDocuments();
+                await deleteRecreateCollection();
 
                 Stopwatch st = new Stopwatch();
                 st.Start();
 
-                Parallel.ForEach(list, item =>
+                List<Task> tasks = new List<Task>();
+
+                if (insertAsCAS)
                 {
-                    try
+                    tasks.AddRange(list.AsParallel().Select(l => _cosmosOperator.InsertSingleDocumentAsync(l).ContinueWith(c => c)));                    
+                }
+                else
+                {
+                    foreach (var item in list)
                     {
-                        if (insertAsCAS)
-                        {
-                            _cosmosOperator.InsertDocumentAsync(item).Wait();
-                        } else
-                        {
-                            _client.CreateDocumentAsync(_collectionUri, item).Wait();
-                        }
+                        tasks.Add(_client.CreateDocumentAsync(_collectionUri, item).ContinueWith(c => c));
                     }
-                    catch { }
-                });
+                }
+                
+                await Task.WhenAll(tasks);
 
                 st.Stop();
 
+                Initialize();
                 var totalInserted = (_cosmosOperator.QueryCosmos<long>("select value count(1) from c")).FirstOrDefault();
                 Trace.WriteLine($"Run {i + 1}: Inserted items in: {st.Elapsed.TotalSeconds}seconds, success rate: {(totalInserted / (double)list.Count()) * 100}");
+
+                totalSeconds.Add(st.Elapsed.TotalSeconds);
+                totalInsert.Add((totalInserted / (double)list.Count()) * 100);
             }
+
+            Trace.WriteLine($"AvgRunTime: {totalSeconds.Average()}, AvgSuccessRate: {totalInsert.Average()}");
         }
 
-        private void deleteAllDocuments()
+        private async Task deleteRecreateCollection()
         {
-            var items = _cosmosOperator.QueryCosmos<CosmosTestRetrieveOperationObject>("SELECT * FROM c");
+            await _client.DeleteDocumentCollectionAsync(UriFactory.CreateDocumentCollectionUri(dbName, InsertCollectionName));
 
-            var results = new List<CosmosOperationResponse>();
-            foreach (var item in items)
-            {
-                _cosmosOperator.DeleteDocumentAsync(item.id).GetAwaiter().GetResult();
-            }               
+            DocumentCollection documentCollection = new DocumentCollection();
+            documentCollection.Id = InsertCollectionName;
+
+            await _client.CreateDocumentCollectionIfNotExistsAsync(UriFactory.CreateDatabaseUri(dbName), documentCollection);
+
         }
         private async Task ScaleDownCollectionAsync(int minRu)
         {
@@ -260,7 +280,7 @@ namespace CosmosScale.Tests
 
             foreach (var collection in collections)
             {
-                if (collection.Id == InsertCollection)
+                if (collection.Id == InsertCollectionName)
                 {
                     Offer offer = _client.CreateOfferQuery()
                         .Where(r => r.ResourceLink == collection.SelfLink)
