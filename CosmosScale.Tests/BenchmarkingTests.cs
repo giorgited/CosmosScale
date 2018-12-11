@@ -23,7 +23,7 @@ namespace CosmosScale.Tests
         private const string dbName = "CollectionBenchmarkingTest";
         private const string InsertCollectionName = "RegularInsert";
         
-        private const int totalLoopCount = 5;
+        private const int totalLoopCount = 3;
 
         private static ConcurrentBag<CosmosTestOperationObject> insertObjects = new ConcurrentBag<CosmosTestOperationObject>();
 
@@ -159,7 +159,7 @@ namespace CosmosScale.Tests
             StringBuilder fileName = new StringBuilder();
             fileName.Append(inParallel ? "InsertInParallel" : "Insert");
             fileName.Append(insertAsCAS ? "ViaCAS" : "");
-            fileName.Append($"{count}-{DateTime.Now.Ticks}.txt");
+            fileName.Append($"{count}.txt");
 
             TextWriterTraceListener tr = new TextWriterTraceListener(System.IO.File.CreateText(fileName.ToString()));
             Trace.Listeners.Add(tr);

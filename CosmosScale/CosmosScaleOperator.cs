@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
@@ -49,7 +50,6 @@ namespace CosmosScale
 
             if (collectionsCacheAside.Any(c => c.Item1 == databaseName && c.Item2 == collectionName))
             {
-                Trace.WriteLine($"{databaseName}|{collectionName} already exists in collection. Skipping caching.");
                 //item for this db and collection exist, min RU will NOT be replaced, min RU should be chosen globaly
             } else
             {
@@ -61,7 +61,7 @@ namespace CosmosScale
             SetTimer();
         }
 
-        public async Task Initialize(RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = null)
+        public async Task Initialize(RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = "/id")
         {
             Database database = new Database();
             database.Id = _databaseName;
@@ -69,9 +69,7 @@ namespace CosmosScale
 
             DocumentCollection documentCollection = new DocumentCollection();
             documentCollection.Id = _collectionName;
-            documentCollection.PartitionKey.Paths.Add(collectionPartitionProperty ?? "/id");
-
-            collectionPartitionProperty = collectionPartitionProperty ?? "/id";
+            documentCollection.PartitionKey.Paths.Add(collectionPartitionProperty);
 
             if (databaseRequestOptions == null)
             {
@@ -81,19 +79,16 @@ namespace CosmosScale
             {
                 await _client.CreateDatabaseIfNotExistsAsync(database, databaseRequestOptions);
             }
+
+
+            collectionRequestOptions = collectionRequestOptions ?? new RequestOptions();
+
+            collectionRequestOptions.PartitionKey = new PartitionKey(collectionPartitionProperty);
+            await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection, collectionRequestOptions);
             
-            if (collectionRequestOptions == null)
-            {
-                await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection, collectionRequestOptions);
-            }
-            else
-            {
-               await  _client.CreateDocumentCollectionIfNotExistsAsync(databaseUri, documentCollection);
-            }
 
             _bulkExecutor = new BulkExecutor(_client,_client.ReadDocumentCollectionAsync(_collectionUri).GetAwaiter().GetResult());
             await _bulkExecutor.InitializeAsync();
-            Trace.WriteLine($"Initialized Resources {_databaseName}, {_collectionName}");
         }
         
 
@@ -114,19 +109,23 @@ namespace CosmosScale
         #region INSERT
         public async Task<CosmosOperationResponse> InsertSingleDocumentAsync(object document)
         {
-            //Trace.WriteLine($"Inserting: {JsonConvert.SerializeObject(document)}, in {_databaseName}|{_collectionName}");
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await InsertDocumentAsync(document, 0, result);
         }
-        public void BulkInsertDocuments(IEnumerable<object> documents, bool enableUpsert = false, bool disableAutomaticIdGeneration = true, int? maxConcurrencyPerPartitionKeyRange = null, 
+        public BulkInsertOpeartionResult BulkInsertDocuments(IEnumerable<object> documents, bool enableUpsert = false, bool disableAutomaticIdGeneration = true, int? maxConcurrencyPerPartitionKeyRange = null, 
             int? maxInMemorySortingBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             lock (bulkInsertLock)
             {
-                ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).Wait();
+                var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
                 _bulkExecutor.BulkImportAsync(documents, enableUpsert, disableAutomaticIdGeneration, maxConcurrencyPerPartitionKeyRange, maxInMemorySortingBatchSize, cancellationToken).Wait();
-                ScaleLogic.ScaleDownCollectionAsync(_client, _databaseName, _collectionName, _minRu).Wait();
+
+                return new BulkInsertOpeartionResult
+                {
+                    ScaleOperations = new List<ScaleOperation>() { scaleOperation },
+                    OperationSuccess = true
+                };
             }
         }
 
@@ -145,14 +144,13 @@ namespace CosmosScale
                 {
                     if (retryCount > _maximumRetryCount)
                     {
-                        Trace.WriteLine("Max rety count reached.");
                         result.Success = false;
                         result.TotalRetries = retryCount;
                         return result;
                     }
                     else
                     {
-                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
+                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await InsertDocumentAsync(document, retryCount++, result);
                     }
@@ -172,13 +170,18 @@ namespace CosmosScale
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await DeleteDocumentAsync(id, 0, result, partitionKey);
         }
-        public void BulkDeleteDocuments(string query, int? deleteBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
+        public BulkInsertOpeartionResult BulkDeleteDocuments(string query, int? deleteBatchSize = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             lock (bulkInsertLock)
             {
-                ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).Wait();
-                _bulkExecutor.BulkDeleteAsync(query, deleteBatchSize, cancellationToken).Wait();
-                ScaleLogic.ScaleDownCollectionAsync(_client, _databaseName, _collectionName, _minRu).Wait();
+                var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
+                var response = _bulkExecutor.BulkDeleteAsync(query, deleteBatchSize, cancellationToken).GetAwaiter().GetResult();
+
+                return new BulkInsertOpeartionResult
+                {
+                    ScaleOperations = new List<ScaleOperation>() { scaleOperation },
+                    OperationSuccess = true
+                };
             }
         }
         private async Task<CosmosOperationResponse> DeleteDocumentAsync(string id, int retryCount, CosmosOperationResponse result, object partitionKey = null)
@@ -210,7 +213,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
+                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await DeleteDocumentAsync(id, retryCount++, result, partitionKey);
                     }
@@ -226,8 +229,6 @@ namespace CosmosScale
         #region REPLACE
         public async Task<CosmosOperationResponse> ReplaceSignleDocumentAsync(string oldDocumentId, object newDocument)
         {
-            Trace.WriteLine($"Replacing {oldDocumentId} with {JsonConvert.SerializeObject(newDocument)}, in {_databaseName}|{_collectionName}");
-
             RefreshLatestActvity();
             CosmosOperationResponse result = new CosmosOperationResponse();
             return await ReplaceDocumentAsync(oldDocumentId, newDocument, 0, result);
@@ -254,7 +255,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = await ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
+                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await ReplaceDocumentAsync(oldDocumentId, newDocument, retryCount++, result);
                     }
@@ -281,12 +282,10 @@ namespace CosmosScale
         private static void SetTimer()
         {
             // Create a timer with a 15 minute interval.
-            aTimer = new System.Timers.Timer(TimeSpan.FromMinutes(15).TotalMilliseconds);
+            aTimer = new System.Timers.Timer(TimeSpan.FromMinutes(1).TotalMilliseconds);
             aTimer.Elapsed += OnTimedEvent;
             aTimer.AutoReset = true;
             aTimer.Enabled = true;
-
-            Trace.WriteLine($"Volleyball timer set.");
         }
         private static void OnTimedEvent(Object source, ElapsedEventArgs e)
         {
@@ -298,16 +297,22 @@ namespace CosmosScale
                     var collectioName = collection.Item2;
                     var minRu = collection.Item3;
 
-                    if (DateTime.Now.AddMinutes(-5) > latestActivityForCollection)
+                    if (DateTime.Now.AddMinutes(-1) > latestActivityForCollection)
                     {
                         //no activity for 5 minutes.. scale back down to minRu
                         ScaleLogic.ScaleDownCollectionAsync(_client, databaseName, collectioName, minRu).Wait();
-                        Trace.WriteLine($"Inactivity longer then 5 minutes in {databaseName}|{collectioName}, scaling down to {minRu}RU.");
                     }
                 }                
             }
         }
 
         #endregion
+    }
+
+    public class BulkInsertOpeartionResult
+    {
+        public bool OperationSuccess { get; set; }
+        public List<ScaleOperation> ScaleOperations { get; set; } = new List<ScaleOperation>();
+        public string OperationFailReason { get; set; }
     }
 }
