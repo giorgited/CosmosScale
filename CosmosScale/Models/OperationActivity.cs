@@ -4,9 +4,9 @@ using System.Text;
 
 namespace CosmosScale.Models
 {
-    public class Activity
+    public class OperationActivity
     {
-        public Activity(string databaseName, string collectionName, DateTimeOffset activityTime, ActivityStrength activityStrength)
+        public OperationActivity(string databaseName, string collectionName, DateTimeOffset activityTime, ActivityStrength activityStrength)
         {
             DatabaseName = databaseName;
             CollectionName = collectionName;
@@ -18,6 +18,6 @@ namespace CosmosScale.Models
         public string CollectionName { get; set; }
         public DateTimeOffset ActivityTime { get; set; }
         public ActivityStrength ActivityStrength { get; set; }
-        public string MetaDataType { get; } = "Activity";
+        public string MetaDataType { get; } = "OperationActivity";
     }
 }

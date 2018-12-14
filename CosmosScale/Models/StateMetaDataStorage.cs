@@ -7,7 +7,7 @@ namespace CosmosScale.Models
     public enum StateMetaDataStorage
     {
         PermamentCosmosCollection,
-        TemporaryCosmosCollection,
+        //TemporaryCosmosCollection,
         InMemoryCollection
     }
 }

@@ -9,10 +9,13 @@ namespace CosmosScale.MetaDataOperator
     internal interface IMetaDataOperator
     {
         Task AddActivity(string databaseName, string collectionName, DateTimeOffset date, ActivityStrength activityStrength);
-        Activity GetLatestActivity(string databaseName, string collectionName);
+        OperationActivity GetLatestActivity(string databaseName, string collectionName);
 
 
         Task AddActiveCollection(string databaseName, string collectionName, int minimumRu);
         IEnumerable<ActiveCollection> GetAllActiveCollections();
+
+        DateTimeOffset GetLatestScaleUp(string databaseName, string collectionName);
+        Task AddScaleActivity(string databaseName, string collectionName, int ru, DateTimeOffset datetime);
     }
 }

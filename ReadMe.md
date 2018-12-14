@@ -1,8 +1,12 @@
 # Cosmos Auto Scaler
 
-Cosmos Auto Scaler is a library for automatically scaling the RU based on the request load. The algorithm listens to the 429 returned from CosmosDB and increases the limit by increments of 500RU for each iteration. 
-User is capable of adjusting the maximum RU to make sure that the software does not exceed the budget. The library is thread safe, there fore it can be called in parallel. Library will only do the scale operation once for every 1 second.
-In addition, there is a cool down algorithm that tracks the activities for each collection and scales down based on the minimum RU provided by the user. Scale down occurs for 5 minute of inactivity.
+CosmosAutoScaler provides auto-scale capabilities to increase the performance of the operations while keeping the cost to the minimum. Cosmos autoscale handles the single and bulk operations seperately. During the single operation, CosmosAutoScaler will send requests by keeping the RU minimum until it recieves a 429, in which case it will start incrementing the RU by 500 until either the max RU is reached, operation is succesful or maximum retry of 10 is reached.
+
+During the bulk operations, CosmosAutoScaler will scale the collection up to the maximum RU defined by the user to provide the best performance, and scale back down based on the elapsed inactivity time period. Inactivity time that system checks for varies between 10seconds, 1 minute and 3 minutes based on the complexity of the most recent activity. 
+
+
+## Benchmarking Bulk Operations
+![CosmosAutoScaler Benchmarking](https://github.com/giorgited/CosmosScale/Benchamrking.png)
 
 ## Getting Started
 Using the library is simple. Download the latest nuget package from https://www.nuget.org/packages/CosmosAutoScaler. Currently the supported functionalities are: Insert, Delete, Replace, and Query. Bulk operations are coming soon.

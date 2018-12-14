@@ -1,4 +1,5 @@
-﻿using Microsoft.Azure.Documents;
+﻿using CosmosScale.MetaDataOperator;
+using Microsoft.Azure.Documents;
 using Microsoft.Azure.Documents.Client;
 using System;
 using System.Collections.Concurrent;
@@ -10,40 +11,36 @@ using System.Threading.Tasks;
 
 namespace CosmosScale
 {
-    public static class ScaleLogic
+    internal static class ScaleLogic
     {
         //Tuple<string, string> --> DatabaseName, CollectionName
-        private static ConcurrentDictionary<Tuple<string, string>, DateTime> latestScaleUp = new ConcurrentDictionary<Tuple<string, string>, DateTime>();
-        private static object lockingObject = new object();
+        private static object _lockingObject = new object();
 
-        public static ScaleOperation ScaleUpCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu, int maxRu)
+        public static ScaleOperation ScaleUpCollectionAsync(DocumentClient client, IMetaDataOperator metaDataOperator, string databaseName, string collectionName, int minRu, int maxRu)
         {
             try
             {
-                var latestActivty = DateTime.MinValue;
-                if (latestScaleUp.TryGetValue(new Tuple<string, string>(_databaseName, _collectionName), out var res))
-                {
-                    latestActivty = DateTime.Now;
-                }
-                if (DateTime.Now.AddSeconds(-1) < latestActivty)
+                var latestActivty = metaDataOperator.GetLatestScaleUp(databaseName, collectionName);
+
+                if (DateTimeOffset.Now.AddSeconds(-5) < latestActivty)
                 {
                     return new ScaleOperation()
                     {
                         ScaledSuccess = false,
-                        ScaleFailReason = "There has been another scale within 1 second span."
+                        ScaleFailReason = "There has been another scale within 5 second span."
                     };
                 }
 
-                Database database = _client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{_databaseName}\"").AsEnumerable().First();
+                Database database = client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{databaseName}\"").AsEnumerable().First();
 
-                List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
+                List<DocumentCollection> collections = client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
 
                 bool scaled = false;
                 foreach (var collection in collections)
                 {
-                    if (collection.Id == _collectionName)
+                    if (collection.Id == collectionName)
                     {
-                        lock (lockingObject)
+                        lock (_lockingObject)
                         {
                             if (scaled)
                             {
@@ -54,7 +51,7 @@ namespace CosmosScale
                                 };
                             }
 
-                            var currentRu = GetCurrentRU(_client, collection, out OfferV2 offer);
+                            var currentRu = GetCurrentRU(client, collection, out OfferV2 offer);
 
                             if (currentRu <= minRu)
                             {
@@ -71,15 +68,15 @@ namespace CosmosScale
                             {
                                 offer = new OfferV2(offer, (int)newRu);
                                 
-                                _client.ReplaceOfferAsync(offer).Wait();
-                                Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)newRu} ({DateTime.Now})");
+                                client.ReplaceOfferAsync(offer).Wait();
+                                Trace.WriteLine($"Scaled {databaseName}|{collectionName} to {(int)newRu} ({DateTimeOffset.Now})");
 
-                                latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+                                metaDataOperator.AddScaleActivity(databaseName, collectionName, (int)newRu, DateTimeOffset.Now);
 
                                 ScaleOperation op = new ScaleOperation();
                                 op.ScaledFrom = (int)currentRu;
                                 op.ScaledTo = (int)newRu;
-                                op.OperationTime = DateTime.Now;
+                                op.OperationTime = DateTimeOffset.Now;
 
 
                                 scaled = true;
@@ -105,7 +102,7 @@ namespace CosmosScale
             }
             catch (Exception e)
             {
-                Trace.WriteLine(e.Message + $" ({DateTime.Now})");
+                Trace.WriteLine(e.Message + $" ({DateTimeOffset.Now})");
 
                 return new ScaleOperation()
                 {
@@ -116,25 +113,19 @@ namespace CosmosScale
             
         }
 
-        public static async Task<ScaleOperation> ScaleUpMaxCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu, int maxRu)
+        public static async Task<ScaleOperation> ScaleUpMaxCollectionAsync(DocumentClient client, IMetaDataOperator metaDataOperator, string databaseName, string collectionName, int minRu, int maxRu)
         {
             try
             {
-                var latestActivty = DateTime.MinValue;
-                if (latestScaleUp.TryGetValue(new Tuple<string, string>(_databaseName, _collectionName), out var res))
-                {
-                    latestActivty = DateTime.Now;
-                }
+                Database database = client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{databaseName}\"").AsEnumerable().First();
 
-                Database database = _client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{_databaseName}\"").AsEnumerable().First();
-
-                List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
+                List<DocumentCollection> collections = client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
                 
                 foreach (var collection in collections)
                 {
-                    if (collection.Id == _collectionName)
+                    if (collection.Id == collectionName)
                     {
-                        var currentRu = GetCurrentRU(_client, collection, out OfferV2 offer);
+                        var currentRu = GetCurrentRU(client, collection, out OfferV2 offer);
 
                         if (currentRu >= maxRu)
                         {
@@ -149,15 +140,15 @@ namespace CosmosScale
                         {
                             offer = new OfferV2(offer, (int)maxRu);
 
-                            await _client.ReplaceOfferAsync(offer);
-                            Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)maxRu}RU. ({DateTime.Now})");
+                            await client.ReplaceOfferAsync(offer);
+                            Trace.WriteLine($"Scaled {databaseName}|{collectionName} to {(int)maxRu}RU. ({DateTimeOffset.Now})");
 
-                            latestScaleUp[new Tuple<string, string>(_databaseName, _collectionName)] = DateTime.Now;
+                            await metaDataOperator.AddScaleActivity(databaseName, collectionName, (int)maxRu, DateTimeOffset.Now);
 
                             ScaleOperation op = new ScaleOperation();
                             op.ScaledFrom = (int)currentRu;
                             op.ScaledTo = (int)maxRu;
-                            op.OperationTime = DateTime.Now;
+                            op.OperationTime = DateTimeOffset.Now;
                             
                             return op;
                         }
@@ -190,19 +181,19 @@ namespace CosmosScale
 
         }
 
-        public static async Task<ScaleOperation> ScaleDownCollectionAsync(DocumentClient _client, string _databaseName, string _collectionName, int minRu)
+        public static async Task<ScaleOperation> ScaleDownCollectionAsync(DocumentClient client, IMetaDataOperator metaDataOperator, string databaseName, string collectionName, int minRu)
         {
             try
             {
-                Database database = _client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{_databaseName}\"").AsEnumerable().First();
+                Database database = client.CreateDatabaseQuery($"SELECT * FROM d WHERE d.id = \"{databaseName}\"").AsEnumerable().First();
 
-                List<DocumentCollection> collections = _client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
+                List<DocumentCollection> collections = client.CreateDocumentCollectionQuery((String)database.SelfLink).ToList();
 
                 foreach (var collection in collections)
                 {
-                    if (collection.Id == _collectionName)
+                    if (collection.Id == collectionName)
                     {
-                        var currentRu = GetCurrentRU(_client, collection, out OfferV2 offer);
+                        var currentRu = GetCurrentRU(client, collection, out OfferV2 offer);
 
                         if (currentRu <= minRu)
                         {
@@ -215,14 +206,14 @@ namespace CosmosScale
 
                         offer = new OfferV2(offer, minRu);
 
-                        await _client.ReplaceOfferAsync(offer);
-                        Trace.WriteLine($"Scaled {_databaseName}|{_collectionName} to {(int)minRu}RU. ({DateTime.Now})");
+                        await client.ReplaceOfferAsync(offer);
+                        Trace.WriteLine($"Scaled {databaseName}|{collectionName} to {(int)minRu}RU. ({DateTimeOffset.Now})");
 
                         return new ScaleOperation()
                         {
                             ScaledTo = minRu,
                             ScaledSuccess = true,
-                            OperationTime = DateTime.Now
+                            OperationTime = DateTimeOffset.Now
                         };
                     }
                 }
@@ -242,9 +233,9 @@ namespace CosmosScale
             }
         }
 
-        public static int GetCurrentRU(DocumentClient _client, DocumentCollection collection, out OfferV2 offer)
+        private static int GetCurrentRU(DocumentClient client, DocumentCollection collection, out OfferV2 offer)
         {
-            offer = (OfferV2)_client.CreateOfferQuery()
+            offer = (OfferV2)client.CreateOfferQuery()
                         .Where(r => r.ResourceLink == collection.SelfLink)
                         .AsEnumerable()
                         .SingleOrDefault();

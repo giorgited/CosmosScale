@@ -96,9 +96,9 @@ namespace CosmosScale
                     case StateMetaDataStorage.PermamentCosmosCollection:
                         _metaDataOperator = new PermanentCollectionMetaDataOperator(_client, _databaseName);
                         break;
-                    case StateMetaDataStorage.TemporaryCosmosCollection:
-                        _metaDataOperator = new TemporaryCollectionMetaDataOperator();
-                        break;
+                    //case StateMetaDataStorage.TemporaryCosmosCollection:
+                    //    _metaDataOperator = new TemporaryCollectionMetaDataOperator();
+                    //    break;
                     case StateMetaDataStorage.InMemoryCollection:
                         _metaDataOperator = new InMemoryMetaDataOperator();
                         break;
@@ -139,7 +139,7 @@ namespace CosmosScale
             _metaDataOperator.AddActivity(_databaseName, _collectionName, DateTimeOffset.Now, ActivityStrength.Hot).Wait();
             lock (bulkInsertLock)
             {
-                var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
+                var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _metaDataOperator, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
                 _bulkExecutor.BulkImportAsync(documents, enableUpsert, disableAutomaticIdGeneration, maxConcurrencyPerPartitionKeyRange, maxInMemorySortingBatchSize, cancellationToken).Wait();
 
                 return new BulkInsertOpeartionResult
@@ -171,7 +171,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
+                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _metaDataOperator, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await InsertDocumentAsync(document, retryCount++, result);
                     }
@@ -196,7 +196,7 @@ namespace CosmosScale
             _metaDataOperator.AddActivity(_databaseName, _collectionName, DateTimeOffset.Now, ActivityStrength.Hot).Wait();
             lock (bulkDeleteLock)
             {
-                var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
+                var scaleOperation = ScaleLogic.ScaleUpMaxCollectionAsync(_client, _metaDataOperator, _databaseName, _collectionName, _minRu, _maxRu).GetAwaiter().GetResult();
                 var response = _bulkExecutor.BulkDeleteAsync(query, deleteBatchSize, cancellationToken).GetAwaiter().GetResult();
 
                 return new BulkInsertOpeartionResult
@@ -235,7 +235,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
+                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _metaDataOperator, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await DeleteDocumentAsync(id, retryCount++, result, partitionKey);
                     }
@@ -277,7 +277,7 @@ namespace CosmosScale
                     }
                     else
                     {
-                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _databaseName, _collectionName, _minRu, _maxRu);
+                        var op = ScaleLogic.ScaleUpCollectionAsync(_client, _metaDataOperator, _databaseName, _collectionName, _minRu, _maxRu);
                         result.ScaleOperations.Add(op);
                         return await ReplaceDocumentAsync(oldDocumentId, newDocument, retryCount++, result);
                     }
@@ -332,7 +332,7 @@ namespace CosmosScale
                     if (dateToCompare > latestActivityDateForCollection)
                     {
                         //no activity for 5 minutes.. scale back down to minRu
-                        ScaleLogic.ScaleDownCollectionAsync(_client, databaseName, collectioName, minRu).Wait();
+                        ScaleLogic.ScaleDownCollectionAsync(_client, _metaDataOperator, databaseName, collectioName, minRu).Wait();
                     }
                 }
             }
