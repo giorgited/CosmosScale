@@ -43,6 +43,9 @@ _cosmosOperator.QueryCosmos<OBJ>("SELECT * FROM C");
 await _cosmosOperator.InsertDocumentAsync(some_document);
 await _cosmosOperator.DeleteDocumentAsync(some_document.id);
 await _cosmosOperator.ReplaceDocument(some_document.id, new_document);
+
+_cosmosOperator.BulkInsertDocuments(insertObjects);
+
 ```
 
 ## Authors
