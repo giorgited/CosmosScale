@@ -6,7 +6,7 @@ During the bulk operations, CosmosAutoScaler will scale the collection up to the
 
 
 ## Benchmarking Bulk Operations
-![CosmosAutoScaler Benchmarking](https://github.com/giorgited/CosmosScale/Benchamrking.png)
+![CosmosAutoScaler Benchmarking](https://github.com/giorgited/CosmosScale/blob/dev/Benchmarking.PNG)
 
 ## Getting Started
 Using the library is simple. Download the latest nuget package from https://www.nuget.org/packages/CosmosAutoScaler. Currently the supported functionalities are: Insert, Delete, Replace, and Query. Bulk operations are coming soon.
