@@ -11,7 +11,11 @@ During the bulk operations, CosmosAutoScaler will scale the collection up to the
 ## Getting Started
 Using the library is simple. Download the latest nuget package from https://www.nuget.org/packages/CosmosAutoScaler. Currently the supported functionalities are: Insert, Delete, Replace, and Query. Bulk operations are coming soon.
 
+## MetaData Storage Options
+When initializing CosmosAutoScaler, user must provide the desired meta data storage options. This allows the CosmosAutoScaler to keep track of activities such as latest operation and latest scale. These are used to identify when to scale up/down any given collection.
 
+PermamentCosmosCollection - with this option, CosmosAutoScaler will create a collection in the given database of cosmos where the library will store the activites. (This option is recommended if the library will be used by many machines.)
+InMemoryCollection - with this option, CosmosAutoScaler will create various in-memory collections to keep track of the activites. (This option is recommended if the library will ONLY be used by at most of one machine at a time).
 
 ### Usage
 
@@ -31,12 +35,9 @@ with collection name of "test". CosmosScaleOperator does require to pass down th
 
 ```
 CosmosScaleOperator op = new CosmosScaleOperator(600, 15000, "NewDatabase1", "test", _client);  
+await op.InitializeResourcesAsync(StateMetaDataStorage.PermamentCosmosCollection);  
 ```
 
-If you would like the library to create the Database and Collection for you, call the InitializeResourcesAsync function and pass in the desired request options
-```
-await op.InitializeResourcesAsync();  
-```
 
 To do CRUD operations, simply call the repsective function for 1-N documents.
 ```
