@@ -62,16 +62,18 @@ namespace CosmosScale.MetaDataOperator
 
         public Activity GetLatestActivity(string databaseName, string collectionName)
         {
-            return _documentClient.CreateDocumentQuery<Activity>(_metaDataCollectionUri,
+            var items = _documentClient.CreateDocumentQuery<Activity>(_metaDataCollectionUri,
                     new SqlQuerySpec()
                     {
-                        QueryText = "select top1 * from c where c.MetaDataType = 'ActiveCollection order by c.ActivityTime desc'"
-                    }).FirstOrDefault();
+                        QueryText = "select top 1 * from c where c.MetaDataType = 'Activity' order by c.ActivityTime desc"
+                    }).ToList();
+
+            return items.FirstOrDefault();
         }
 
-        public Task AddActiveCollection(string databaseName, string collectionName, int minimumRu)
+        public async Task AddActiveCollection(string databaseName, string collectionName, int minimumRu)
         {
-            throw new NotImplementedException();
+            await _documentClient.CreateDocumentAsync(_metaDataCollectionUri, new ActiveCollection(databaseName, collectionName, minimumRu));
         }
         
     }

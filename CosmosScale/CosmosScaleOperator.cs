@@ -48,7 +48,7 @@ namespace CosmosScale
         }
 
         #region INITIALIZE
-        public async Task Initialize(StateMetaDataStorage metaDataStorage, RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = "/id")
+        public async Task InitializeAsync(StateMetaDataStorage metaDataStorage, RequestOptions databaseRequestOptions = null, RequestOptions collectionRequestOptions = null, string collectionPartitionProperty = "/id")
         {
             await CheckCreateDatabase(databaseRequestOptions);
             await CheckCreateCollection(collectionRequestOptions, collectionPartitionProperty);

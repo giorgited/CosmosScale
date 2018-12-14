@@ -18,5 +18,6 @@ namespace CosmosScale.Models
         public string CollectionName { get; set; }
         public DateTimeOffset ActivityTime { get; set; }
         public ActivityStrength ActivityStrength { get; set; }
+        public string MetaDataType { get; } = "Activity";
     }
 }
